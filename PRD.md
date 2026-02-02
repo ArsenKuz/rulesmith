@@ -1,300 +1,468 @@
-# Rulesmith Product Requirements Document (PRD)
+# Rulesmith Product Requirements Document (PRD) v2.0
 
-**Version:** 1.0.0  
+**Version:** 2.0.0  
 **Date:** 2026-02-03  
-**Status:** Draft  
+**Status:** Active  
 
 ---
 
 ## Executive Summary
 
-Rulesmith is an intelligent CLI tool that generates customized AI assistant rules for software projects. It detects the technology stack, interviews the developer about project requirements, and outputs formatted rules for multiple AI tools (Cursor, Claude Code, GitHub Copilot, Roo Code, Continue.dev).
+Rulesmith is an **AI-powered project setup agent** that helps developers bootstrap new projects from scratch or configure existing ones. It combines LLM-powered PRD generation with intelligent rule selection to provide a complete development setup.
+
+### Two Operating Modes
+
+**Mode 1: New Project (from 0)** 🆕
+- User provides a basic idea/prompt
+- Agent interviews to refine requirements
+- **Generates production-ready PRD** via LLM
+- Selects optimal rules based on PRD analysis
+- Outputs AI assistant rules + PRD document
+
+**Mode 2: Existing Project** 🔍
+- Detects technology stack from files
+- Maps to appropriate rules from `/rules` library
+- Outputs AI assistant rules
 
 ### Key Value Propositions
-1. **Automatic Stack Detection** - Identifies 10+ technology stacks from project files
-2. **Intelligent Interview** - Quick (3-5 questions) or Guided (15-20 questions) modes
-3. **Multi-Tool Output** - Generates rules in native formats for all major AI assistants
-4. **Modular Rule Library** - YAML-frontmatter Markdown rules that can be combined and extended
+1. **Zero-to-Production PRDs** - Generates comprehensive PRDs from simple prompts via LLM
+2. **Intelligent Rule Curation** - Selects best rules based on PRD content or stack detection
+3. **AI Assistant Ready** - Outputs rules for Cursor, Claude Code, Copilot, Roo, Continue.dev
+4. **Extensible Architecture** - Plugin system for future schemas and skills
 
 ---
 
 ## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Rulesmith CLI                             │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐   │
-│  │   Init Cmd   │  │  Update Cmd  │  │     Status Cmd       │   │
-│  └──────┬───────┘  └──────────────┘  └──────────────────────┘   │
-└─────────┼────────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Stack Detection Engine                        │
-│   • Parses package.json, requirements.txt, Cargo.toml, etc.     │
-│   • Scores matches against known stack signatures                 │
-│   • Returns: detected_stack + confidence + signals               │
-└─────────────────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Generator Orchestrator                        │
-│   ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐     │
-│   │   Quick     │  │   Guided    │  │  Rule Compiler      │     │
-│   │   Mode      │  │   Mode      │  │  + Requirements Doc │     │
-│   │  (3-5 Qs)   │  │  (15-20 Qs) │  │                     │     │
-│   └─────────────┘  └─────────────┘  └─────────────────────┘     │
-└─────────────────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Multi-Tool Formatters                         │
-│   ┌─────────┐ ┌─────────┐ ┌──────────┐ ┌────────┐ ┌──────────┐  │
-│   │ Cursor  │ │ Claude  │ │ Copilot  │ │  Roo   │ │ Continue │  │
-│   │ .mdc    │ │ CLAUDE  │ │ .github  │ │ .roo   │ │ .cont... │  │
-│   └─────────┘ └─────────┘ └──────────┘ └────────┘ └──────────┘  │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Rulesmith CLI Agent                                  │
+│                                                                              │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                         MODE SELECTION                                │  │
+│  │                    (new project / existing project)                   │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                        │
+│                    ┌───────────────┴───────────────┐                        │
+│                    ▼                               ▼                        │
+│  ┌───────────────────────────────┐    ┌───────────────────────────────┐     │
+│  │     MODE 1: NEW PROJECT       │    │    MODE 2: EXISTING PROJECT   │     │
+│  │      (Greenfield Setup)       │    │      (Brownfield Detection)   │     │
+│  └───────────────────────────────┘    └───────────────────────────────┘     │
+│                    │                               │                        │
+│  ┌─────────────────┴──────────┐       ┌──────────┴─────────────────┐        │
+│  │  1. Initial Prompt         │       │  1. Stack Detection        │        │
+│  │     (User's idea)          │       │     (Parse files)          │        │
+│  │                            │       │                            │        │
+│  │  2. Clarification Interview│       │  2. Identify Tech Stack    │        │
+│  │     (10-15 questions)      │       │     (Match signatures)     │        │
+│  │                            │       │                            │        │
+│  │  3. LLM PRD Generation     │       │  3. Quick Context Qs       │        │
+│  │     (GPT-4/Claude)         │       │     (Team size, etc)       │        │
+│  │                            │       │                            │        │
+│  │  4. Parse PRD → Stack      │       │  4. Map to Rules           │        │
+│  │     (Extract requirements) │       │     (Library lookup)       │        │
+│  └────────────────────────────┘       └────────────────────────────┘        │
+│                    │                               │                        │
+│                    └───────────────┬───────────────┘                        │
+│                                    ▼                                        │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                      SHARED: RULE SELECTION                           │  │
+│  │     (Select from /rules library based on stack/domain/context)        │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                        │
+│                                    ▼                                        │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                     RULE COMPILATION & ASSEMBLY                       │  │
+│  │     (Resolve dependencies, personalize, sort by weight)               │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                        │
+│                                    ▼                                        │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                     MULTI-TOOL FORMATTERS                             │  │
+│  │  ┌─────────┐ ┌─────────┐ ┌──────────┐ ┌────────┐ ┌──────────┐        │  │
+│  │  │ Cursor  │ │ Claude  │ │ Copilot  │ │  Roo   │ │ Continue │        │  │
+│  │  │ .mdc    │ │ CLAUDE  │ │ .github  │ │ .roo   │ │ .cont... │        │  │
+│  │  └─────────┘ └─────────┘ └──────────┘ └────────┘ └──────────┘        │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                        │
+│                                    ▼                                        │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                         OUTPUT                                        │  │
+│  │  • PRD.md (Mode 1 only)                                               │  │
+│  │  • AI assistant rules (all modes)                                     │  │
+│  │  • .rulesmith/config.json                                             │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## External Dependencies
+## Mode 1: New Project Workflow (Primary)
 
-### Required Rules Directory Files
+### Phase 1: Project Conception
 
-The Rulesmith system depends on the existing `/Users/dars/Development/opencode-projects/experiment/Rules` directory which contains:
+**Input:** User's initial idea/prompt
+```bash
+rulesmith new "I want to build a SaaS platform for pet groomers \
+              to manage appointments and handle payments"
+```
 
-#### Core Rules (Always Apply) - `/Users/dars/Development/opencode-projects/experiment/Rules/core/`
-| File | Purpose | Weight |
-|------|---------|--------|
-| `communication.md` | When to ask vs act, response style | 100 |
-| `security-baseline.md` | Security requirements for all code | 90 |
-| `error-handling.md` | Error patterns and recovery | 80 |
-| `documentation.md` | Documentation standards | 60 |
-| `code-review.md` | Code review checklist | 40 |
-| `code-organization.md` | File size limits, naming, imports | 85 |
-| `formatting-standards.md` | Ruff, Prettier, linting config | 75 |
-| `prd-driven-development.md` | PRD workflow, task breakdown | 95 |
+**Process:**
+1. Capture initial prompt
+2. Display confirmation and scope estimate
+3. Begin clarification interview
 
-#### Domain Rules - `/Users/dars/Development/opencode-projects/experiment/Rules/domains/`
-| File | Applies To | Weight |
-|------|------------|--------|
-| `web-frontend.md` | `**/*.{tsx,jsx,vue,svelte}` | 70 |
-| `web-backend.md` | `**/api/**/*` | 70 |
+### Phase 2: Clarification Interview
 
-#### Stack Rules - `/Users/dars/Development/opencode-projects/experiment/Rules/stacks/`
-| File | Stack Signature | Weight |
-|------|-----------------|--------|
-| `nextjs.md` | package.json with `next` | 80 |
-| `fastapi-python.md` | requirements.txt with `fastapi` | 80 |
+**Duration:** 10-15 questions, ~5 minutes
 
-#### Framework Rules - `/Users/dars/Development/opencode-projects/experiment/Rules/frameworks/`
-| File | Purpose | Weight |
-|------|---------|--------|
-| `pipeline-architecture.md` | Domain-driven pipeline patterns | 65 |
+**Question Categories:**
 
-#### Testing Rules - `/Users/dars/Development/opencode-projects/experiment/Rules/testing/`
-| File | Purpose | Weight |
-|------|---------|--------|
-| `testing-standards.md` | Testing strategies | 60 |
-| `testing-day1.md` | Testing from day 1 | 70 |
+| Category | Questions | Purpose |
+|----------|-----------|---------|
+| **Basics** | 2-3 | Project name, type (SaaS, API, Mobile, etc.) |
+| **Users** | 2-3 | Target audience, user roles, scale |
+| **Tech** | 3-4 | Preferred stack (if any), performance needs, integrations |
+| **Features** | 2-3 | Core functionality, MVP scope, nice-to-haves |
+| **Constraints** | 2-3 | Timeline, budget, team size, compliance |
+| **AI Preferences** | 2 | Coding style, documentation level, review process |
 
-#### Performance Rules - `/Users/dars/Development/opencode-projects/experiment/Rules/performance/`
-| File | Purpose | Weight |
-|------|---------|--------|
-| `performance-optimization.md` | Performance guidelines | 55 |
+**Example Questions:**
+1. "What type of application is this?" [SaaS / API / Mobile / CLI / Desktop]
+2. "Who are your primary users?" [Consumers / Businesses / Developers]
+3. "Any preferred tech stack?" [Any / React/Node / Python / Go / Specific]
+4. "Expected user scale?" [100s / 1000s / 10000s / Millions]
+5. "Timeline constraint?" [ASAP / 3 months / 6 months / No rush]
+6. "Compliance requirements?" [GDPR / HIPAA / SOC2 / None]
 
-### Rulesmith Library Index - `/Users/dars/Development/opencode-projects/experiment/rulesmith-library/`
+### Phase 3: LLM PRD Generation
 
-The `index.yaml` file provides the machine-readable catalog of all rules with their metadata, file paths, and dependencies.
+**Prompt Engineering:**
+- Combine user prompt + interview answers
+- Structured output with sections
+- Reference schema for consistency
+
+**LLM Call Structure:**
+```
+System: You are a technical product manager creating PRDs.
+       Use the provided schema and best practices.
+
+Context:
+- User's idea: {initial_prompt}
+- Project type: {project_type}
+- Users: {target_users}
+- Scale: {expected_scale}
+- Stack preference: {preferred_stack}
+- Timeline: {timeline}
+- Constraints: {constraints}
+
+Generate a comprehensive PRD with:
+1. Executive Summary
+2. Goals & Objectives
+3. User Stories & Use Cases
+4. Functional Requirements
+5. Non-Functional Requirements
+6. Technical Architecture
+7. Data Model
+8. API Design
+9. UI/UX Considerations
+10. Implementation Phases
+11. Testing Strategy
+12. Deployment Plan
+13. Success Metrics
+```
+
+**Output:** `PRD.md` file in project directory
+
+### Phase 4: PRD Analysis & Stack Extraction
+
+**Automated Parsing:**
+- Extract tech stack recommendations from PRD
+- Identify domains (frontend, backend, database, etc.)
+- Detect performance/security requirements
+- Map to available rules
+
+**Stack Resolution Logic:**
+```python
+if PRD suggests "React + Node.js + PostgreSQL":
+    stack = "nextjs-fullstack"
+elif PRD suggests "Python + FastAPI":
+    stack = "fastapi-python"
+# etc.
+```
+
+### Phase 5: Rule Selection & Formatting
+
+Same as Mode 2 (see below), but using PRD-derived stack instead of file detection.
+
+---
+
+## Mode 2: Existing Project Workflow
+
+### Phase 1: Stack Detection
+
+**Detection Sources:**
+| File | Stack Indicators |
+|------|-----------------|
+| `package.json` | next, react, vue, express |
+| `requirements.txt` | django, flask, fastapi |
+| `Cargo.toml` | actix-web, rocket, axum |
+| `go.mod` | gin, echo, fiber |
+| `Gemfile` | rails, sinatra |
+| `composer.json` | laravel, symfony |
+| `pubspec.yaml` | flutter |
+
+### Phase 2: Quick Context Questions
+
+Even for existing projects, ask:
+1. "Confirm this is a {detected_stack} project?"
+2. "Team size?" (affects communication rules)
+3. "Primary constraint?" (performance, security, DX)
+4. "Target AI tools?" (cursor, claude, copilot, etc.)
+
+### Phase 3: Rule Selection
+
+**Selection Criteria:**
+- **Core rules** - Always included (communication, security, error-handling)
+- **Stack rules** - Based on detected/selected technology
+- **Domain rules** - Based on project type (web, mobile, api, etc.)
+- **Requirement rules** - Based on context (testing, performance, etc.)
+
+---
+
+## Rule Library Structure
+
+### External Rules Directory
+**Location:** `/Users/dars/Development/opencode-projects/experiment/Rules/`
+
+**Organization:**
+```
+Rules/
+├── core/              # Universal rules (always apply)
+│   ├── communication.md
+│   ├── security-baseline.md
+│   ├── error-handling.md
+│   ├── documentation.md
+│   ├── prd-driven-development.md
+│   ├── code-organization.md
+│   ├── formatting-standards.md
+│   └── code-review.md
+├── domains/           # Domain-specific
+│   ├── web-frontend.md
+│   ├── web-backend.md
+│   ├── mobile-app.md
+│   └── cli-tool.md
+├── stacks/            # Technology stacks
+│   ├── nextjs.md
+│   ├── fastapi-python.md
+│   ├── django-react.md
+│   ├── react-spa.md
+│   ├── flutter-firebase.md
+│   └── rust-actix.md
+├── frameworks/        # Architecture patterns
+│   ├── pipeline-architecture.md
+│   └── microservices.md
+├── testing/           # Testing strategies
+│   ├── testing-standards.md
+│   └── testing-day1.md
+├── security/          # Security specifics
+│   └── security-compliance.md
+└── performance/       # Optimization
+    └── performance-optimization.md
+```
+
+### Rule Format
+
+Each rule is a Markdown file with YAML frontmatter:
+
+```markdown
+---
+description: Brief description
+globs: "**/*.py"           # File patterns
+alwaysApply: false         # Always include?
+weight: 70                 # Priority (100=highest)
+includes:                  # Dependencies
+  - security-baseline
+  - error-handling
+---
+
+# Rule Title
+
+## Context
+When to use this rule...
+
+## Requirements
+1. Specific requirement
+2. Another requirement
+
+## Examples
+
+### Good
+```python
+# Good example
+```
+
+### Bad
+```python
+# Bad example
+```
+```
 
 ---
 
 ## Component Specifications
 
-### 1. CLI Foundation (`cli/`)
+### 1. CLI Module (`cli/`)
 
-**Location:** `cli/` directory  
-**Purpose:** Main entry point and command handling
+**Primary Commands:**
 
-#### Commands
+```bash
+# Mode 1: New project
+rulesmith new "your idea here" [--guided] [--output ./my-project]
 
-**`rulesmith init`**
-- Detects technology stack
-- Runs interview (quick or guided mode)
-- Generates rules for selected AI tools
-- Creates `.rulesmith/config.json`
+# Mode 2: Existing project
+rulesmith init [path] [--quick] [--guided]
 
-**Flags:**
-- `--quick` - Fast mode with 3-5 questions
-- `--guided` - Comprehensive 15-20 question interview
-- `--stack <name>` - Override auto-detection
-- `--tools <list>` - Comma-separated list of target tools
+# Other commands
+rulesmith status              # Show current config
+rulesmith update              # Update rule library
+rulesmith doctor              # Diagnose issues
+```
 
-**`rulesmith update`**
-- Updates rule library from GitHub
-- Pulls latest rules from remote repository
-- Updates local config with new version
+**Command: `rulesmith new`**
+- Accepts initial prompt as argument
+- Runs clarification interview
+- Calls LLM to generate PRD
+- Analyzes PRD to select rules
+- Outputs PRD + AI assistant rules
 
-**`rulesmith status`**
-- Shows current project configuration
-- Lists detected stack and active formatters
-- Displays library version and last update
+**Command: `rulesmith init`**
+- Detects existing project stack
+- Runs brief context interview
+- Selects rules based on stack
+- Outputs AI assistant rules
 
-#### Configuration Schema (`.rulesmith/config.json`)
+### 2. Interview Engine (`generator/src/interview/`)
 
+**Architecture:**
+- Question definitions with branching logic
+- Rich terminal UI (colors, progress bars)
+- Adaptive questioning based on previous answers
+- Support for text, choice, multiple-choice, confirm inputs
+
+**Key Features:**
+- Skip logic (e.g., skip scaling questions for CLI tools)
+- Validation (ensure required fields answered)
+- Save/resume (can interrupt and continue)
+- Templates (pre-defined question sets for project types)
+
+### 3. LLM Integration (`generator/src/llm/`)
+
+**New Component - To Be Built:**
+
+```python
+class PRDGenerator:
+    """Generates PRDs via LLM API."""
+    
+    def generate(
+        self,
+        initial_prompt: str,
+        interview_answers: Dict,
+        model: str = "gpt-4"
+    ) -> str:
+        # Construct system + user prompts
+        # Call LLM API
+        # Parse and validate output
+        # Return markdown PRD
+```
+
+**Supported Providers:**
+- OpenAI (GPT-4, GPT-4-turbo)
+- Anthropic (Claude 3 Opus/Sonnet)
+- Local models (via Ollama/LM Studio)
+
+**Configuration:**
 ```json
 {
-  "version": "1.0.0",
-  "project_name": "string",
-  "project_root": "path",
-  "detected_stack": "string",
-  "stack_confidence": 0.0-1.0,
-  "detected_signals": {},
-  "selected_stack": "string | null",
-  "generation_mode": "quick | guided",
-  "active_formatters": ["cursor", "claude", "copilot"],
-  "library_version": "string",
-  "library_updated_at": "ISO8601",
-  "created_at": "ISO8601",
-  "updated_at": "ISO8601"
+  "llm_provider": "openai",
+  "llm_model": "gpt-4",
+  "llm_api_key": "sk-...",
+  "prd_template": "default",
+  "max_tokens": 4000
 }
 ```
 
-#### Stack Detection Engine
+### 4. PRD Parser (`generator/src/parser/`)
 
-**Detectable Stacks (Minimum 10):**
-1. Next.js Full-Stack (Next.js + React + TypeScript)
-2. React SPA (Vite/CRA + React)
-3. Django + React (Django backend, React frontend)
-4. FastAPI + Vue (FastAPI backend, Vue frontend)
-5. Laravel (PHP)
-6. Ruby on Rails
-7. Rust (Actix/Rocket/Axum)
-8. Go (Gin/Echo/Fiber)
-9. Flutter + Firebase (Mobile)
-10. Python Data/ML (Jupyter, pandas, scikit-learn)
-11. Express.js API
-12. NestJS
+**New Component - To Be Built:**
 
-**Detection Algorithm:**
-1. Collect signals from project files (package.json, requirements.txt, etc.)
-2. Score each stack based on weighted criteria
-3. Return primary stack with confidence score
-
-### 2. Generator Agent (`generator/`)
-
-**Location:** `generator/` directory  
-**Purpose:** Interview users and compile rules
-
-#### Interview Engine
-
-**Question Types:**
-- `text` - Free text input
-- `choice` - Single selection from options
-- `multiple_choice` - Multiple selections
-- `confirm` - Yes/No question
-- `path` - File/directory path
-
-**Quick Mode Questions (3-5):**
-1. Confirm detected stack
-2. Project purpose (SaaS, E-commerce, API, etc.)
-3. Team size
-4. Primary constraint (Performance, Security, DX, etc.)
-5. Target AI tools (Cursor, Claude, Copilot, etc.)
-
-**Guided Mode Questions (15-20):**
-- Section 1: Project Context (3-4 Qs)
-- Section 2: Architecture & Design (3-4 Qs)
-- Section 3: Development Practices (4-5 Qs)
-- Section 4: Constraints & Priorities (3-4 Qs)
-- Section 5: AI Tools & Integration (3-4 Qs)
-
-#### Rule Compiler
-
-**Compilation Process:**
-1. Load library index.yaml
-2. Get core rules (alwaysApply: true)
-3. Get stack-specific rules from detected stack
-4. Select domain rules based on interview answers
-5. Resolve all includes and dependencies recursively
-6. Sort by weight (highest first)
-7. Personalize content with interview answers
-
-**Output Format:**
 ```python
-{
-  "id": "rule-id",
-  "description": "Rule description",
-  "globs": "**/*.py",
-  "alwaysApply": true,
-  "weight": 100,
-  "content": "# Markdown content...",
-  "category": "core | stack | domain"
-}
+class PRDParser:
+    """Extracts structured data from LLM-generated PRD."""
+    
+    def parse(self, prd_content: str) -> ParsedPRD:
+        # Extract tech stack suggestions
+        # Identify domains
+        # Detect requirements
+        # Return structured object
 ```
 
-#### Requirements Document Generator
+**Extracted Fields:**
+- Suggested tech stack
+- Architecture type (monolith, microservices, serverless)
+- Database type (SQL, NoSQL, both)
+- API style (REST, GraphQL, gRPC)
+- Frontend framework (if applicable)
+- Performance requirements
+- Security/compliance needs
 
-Creates a PRD-style document based on interview answers including:
-- Project overview and characteristics
-- Technology stack details
-- Development practices (testing, code review, documentation)
-- Constraints and priorities
-- AI assistant configuration
-- Rule generation summary
+### 5. Rule Compiler (`generator/src/assembly/`)
 
-### 3. Multi-Tool Formatters (`formatters/`)
+**Enhanced for dual modes:**
 
-**Location:** `formatters/` directory  
-**Purpose:** Convert compiled rules to each AI tool's native format
+```python
+class RuleCompiler:
+    def compile_for_new_project(
+        self,
+        parsed_prd: ParsedPRD,
+        interview_answers: Dict
+    ) -> List[CompiledRule]:
+        # 1. Get core rules
+        # 2. Get stack rules from PRD
+        # 3. Get domain rules from project type
+        # 4. Get requirement rules (testing, perf, etc.)
+        # 5. Resolve dependencies
+        # 6. Sort by weight
+        # 7. Personalize with context
+        pass
+    
+    def compile_for_existing_project(
+        self,
+        detected_stack: str,
+        interview_answers: Dict
+    ) -> List[CompiledRule]:
+        # Similar but uses detected stack instead of PRD
+        pass
+```
 
-#### Cursor Formatter
+### 6. Formatters (`formatters/`)
 
-**Output:** `.cursor/rules/*.mdc`
-**Format:** YAML frontmatter + Markdown body
+**Target Outputs:**
 
-**Filename Convention:**
-- `00-core-{index}-{rule-id}.mdc` - Core rules (alwaysApply)
-- `10-high-{index}-{rule-id}.mdc` - High weight (≥70)
-- `20-medium-{index}-{rule-id}.mdc` - Medium weight (40-69)
-- `30-low-{index}-{rule-id}.mdc` - Low weight (<40)
-- `99-project-summary.mdc` - Project overview
+| Tool | Format | Location |
+|------|--------|----------|
+| Cursor | `.mdc` files | `.cursor/rules/` |
+| Claude Code | `CLAUDE.md` | Project root |
+| GitHub Copilot | `copilot-instructions.md` | `.github/` |
+| Roo Code | `.md` files | `.roo/rules/` |
+| Continue.dev | `.continuerules` | Project root |
 
-#### Claude Code Formatter
-
-**Output:** `CLAUDE.md` (single file)
-**Format:** Structured Markdown sections
-
-**Structure:**
-1. Project Overview
-2. Core Principles (alwaysApply rules)
-3. Stack-Specific Guidelines
-4. Domain-Specific Patterns
-5. Communication Preferences
-6. Additional Context
-
-#### GitHub Copilot Formatter
-
-**Output:** `.github/copilot-instructions.md`
-**Format:** Markdown with structured guidelines
-
-**Structure:**
-1. Project Context
-2. Coding Standards
-3. Pull Request Guidelines
-4. Testing Approach
-5. Additional Notes
-
-#### Roo Code Formatter
-
-**Output:** `.roo/rules/*.md`
-**Format:** Similar to Cursor but different path
-
-#### Continue.dev Formatter
-
-**Output:** `.continuerules` (single file)
-**Format:** Concatenated rules with separators
+**Shared Features:**
+- Rule prioritization by weight
+- File naming conventions with sorting prefixes
+- Validation of generated output
+- Atomic file writes
 
 ---
 
@@ -303,201 +471,90 @@ Creates a PRD-style document based on interview answers including:
 ```
 rulesmith/
 ├── PRD.md                          # This document
-├── README.md                       # Project documentation
-├── requirements.txt                # Python dependencies
-├── setup.py                        # Package setup
-├── pyproject.toml                  # Modern Python packaging
-├── .gitignore                      # Git ignore rules
+├── README.md                       # User documentation
+├── pyproject.toml                  # Package config
+├── requirements.txt                # Dependencies
+├── rulesmith.py                    # CLI entry point
 │
-├── cli/                            # CLI Foundation (Agent 1)
-│   ├── src/
-│   │   ├── __init__.py
-│   │   ├── main.py                 # Entry point
-│   │   ├── commands/
-│   │   │   ├── __init__.py
-│   │   │   ├── init.py            # Init command
-│   │   │   ├── update.py          # Update command
-│   │   │   └── status.py          # Status command
-│   │   ├── detectors/
-│   │   │   ├── __init__.py
-│   │   │   ├── stack_detector.py  # Detection engine
-│   │   │   └── signals/           # Signal detectors
-│   │   │       ├── __init__.py
-│   │   │       ├── javascript.py
-│   │   │       ├── python.py
-│   │   │       ├── rust.py
-│   │   │       ├── go.py
-│   │   │       └── ...
-│   │   ├── config/
-│   │   │   ├── __init__.py
-│   │   │   ├── manager.py         # Config I/O
-│   │   │   └── schema.py          # Pydantic models
-│   │   └── utils/
-│   │       ├── __init__.py
-│   │       ├── paths.py           # Path utilities
-│   │       └── github.py          # GitHub API client
-│   └── tests/
-│       ├── __init__.py
-│       ├── test_commands/
-│       ├── test_detectors/
-│       └── fixtures/
+├── cli/
+│   └── src/
+│       ├── main.py                 # Command definitions
+│       ├── commands/
+│       │   ├── new.py              # NEW: New project command
+│       │   ├── init.py             # Existing project command
+│       │   ├── status.py
+│       │   └── update.py
+│       ├── config/
+│       │   ├── schema.py           # Pydantic models
+│       │   └── manager.py          # Config I/O
+│       └── detectors/
+│           └── stack_detector.py   # File-based detection
 │
-├── generator/                      # Generator Agent (Agent 3)
-│   ├── src/
-│   │   ├── __init__.py
-│   │   ├── orchestrator.py        # Main workflow
-│   │   ├── modes/
-│   │   │   ├── __init__.py
-│   │   │   ├── quick.py          # Quick mode
-│   │   │   └── guided.py         # Guided mode
-│   │   ├── interview/
-│   │   │   ├── __init__.py
-│   │   │   ├── engine.py         # Interview engine
-│   │   │   ├── questions.py      # Question definitions
-│   │   │   └── adapters.py       # CLI adapters
-│   │   ├── assembly/
-│   │   │   ├── __init__.py
-│   │   │   ├── compiler.py       # Rule compiler
-│   │   │   ├── resolver.py       # Dependency resolver
-│   │   │   └── context.py        # Context builder
-│   │   ├── requirements/
-│   │   │   ├── __init__.py
-│   │   │   ├── generator.py      # PRD generator
-│   │   │   └── templates/
-│   │   │       └── requirements.md
-│   │   └── models/
-│   │       ├── __init__.py
-│   │       ├── interview.py      # Interview models
-│   │       ├── assembly.py       # Assembly models
-│   │       └── requirements.py   # Requirements models
-│   └── tests/
+├── generator/
+│   └── src/
+│       ├── orchestrator.py         # Workflow coordinator
+│       ├── llm/                    # NEW: LLM integration
+│       │   ├── __init__.py
+│       │   ├── client.py           # API clients
+│       │   ├── prd_generator.py    # PRD generation
+│       │   └── prompts/
+│       │       ├── system.txt
+│       │       └── prd_template.md
+│       ├── parser/                 # NEW: PRD parsing
+│       │   ├── __init__.py
+│       │   ├── prd_parser.py       # Extract structured data
+│       │   └── stack_extractor.py  # Identify tech from PRD
+│       ├── interview/
+│       │   ├── engine.py           # Interactive questioning
+│       │   ├── questions.py        # Question definitions
+│       │   ├── modes/
+│       │   │   ├── new_project.py  # 15-question new project mode
+│       │   │   └── existing.py     # 4-question existing mode
+│       │   └── adapters.py         # CLI adapters
+│       └── assembly/
+│           ├── compiler.py         # Rule compilation
+│           ├── resolver.py         # Dependency resolution
+│           └── context.py          # Context building
 │
-├── formatters/                     # Multi-Tool Formatters (Agent 4)
-│   ├── src/
-│   │   ├── __init__.py
-│   │   ├── base.py               # Base formatter
-│   │   ├── registry.py           # Formatter registry
-│   │   ├── sync.py              # Sync engine
-│   │   ├── formatters/
-│   │   │   ├── __init__.py
-│   │   │   ├── cursor.py        # Cursor (.mdc)
-│   │   │   ├── claude.py        # Claude Code (CLAUDE.md)
-│   │   │   ├── copilot.py       # GitHub Copilot
-│   │   │   ├── roo.py          # Roo Code
-│   │   │   └── continue_dev.py  # Continue.dev
-│   │   └── utils/
-│   │       ├── __init__.py
-│   │       ├── file_writer.py   # File operations
-│   │       └── template.py      # Template utilities
-│   └── tests/
+├── formatters/
+│   └── src/
+│       ├── base.py                 # Base formatter class
+│       ├── registry.py             # Formatter discovery
+│       ├── sync.py                 # Multi-formatter sync
+│       └── formatters/
+│           ├── cursor.py           # .mdc generation
+│           ├── claude.py           # CLAUDE.md generation
+│           ├── copilot.py          # GitHub Copilot
+│           ├── roo.py              # Roo Code
+│           └── continue_dev.py     # Continue.dev
 │
-└── scripts/                        # Build & utility scripts
-    ├── setup.sh                   # Initial setup
-    ├── test.sh                    # Run tests
-    └── validate.py                # Rule validation
+└── schemas/                        # NEW: Future extensibility
+    ├── prd/                        # PRD schemas
+    │   ├── v1.json
+    │   └── v2.json
+    └── rules/                      # Rule validation schemas
+        └── rule-v1.json
 ```
-
----
-
-## Build Instructions
-
-### Phase 1: Project Setup
-
-1. **Create virtual environment:**
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # or venv\Scripts\activate on Windows
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   pip install typer>=0.9.0 pydantic>=2.0.0 pyyaml>=6.0 requests>=2.31.0 rich>=13.0.0 pathspec>=0.11.0 jinja2>=3.1.0
-   ```
-
-### Phase 2: Build CLI Foundation
-
-**Reference Files:**
-- `/Users/dars/Development/opencode-projects/experiment/agent1-cli-foundation-PLAN.md`
-
-**Tasks:**
-1. Create CLI structure with Typer
-2. Implement `init`, `update`, `status` commands
-3. Build stack detection engine with 10+ detectors
-4. Create configuration manager
-5. Add tests with fixtures
-
-**Key Implementation Details:**
-- Use Pydantic for config validation
-- Use Rich for terminal formatting
-- Support `--quick`, `--guided`, `--stack` flags
-- Detect stacks from package.json, requirements.txt, etc.
-
-### Phase 3: Build Generator
-
-**Reference Files:**
-- `/Users/dars/Development/opencode-projects/experiment/agent3-generator-PLAN.md`
-
-**Tasks:**
-1. Build interview engine with Rich prompts
-2. Create Quick mode (3-5 questions)
-3. Create Guided mode (15-20 questions)
-4. Implement rule compiler with dependency resolution
-5. Build requirements document generator with Jinja2
-
-**Key Implementation Details:**
-- Support text, choice, multiple_choice, confirm, path question types
-- Resolve rule includes recursively
-- Sort rules by weight (highest first)
-- Generate PRD-style requirements doc
-
-### Phase 4: Build Formatters
-
-**Reference Files:**
-- `/Users/dars/Development/opencode-projects/experiment/agent4-formatters-PLAN.md`
-
-**Tasks:**
-1. Create base formatter interface
-2. Implement Cursor formatter (.mdc files)
-3. Implement Claude formatter (CLAUDE.md)
-4. Implement Copilot formatter (copilot-instructions.md)
-5. Implement Roo and Continue formatters
-6. Build sync engine
-
-**Key Implementation Details:**
-- All formatters inherit from BaseFormatter
-- Use YAML frontmatter for Cursor (.mdc)
-- Single file output for Claude and Copilot
-- Use weight field for rule prioritization
-- Validate generated output
-
-### Phase 5: Integration & Testing
-
-**Tasks:**
-1. Wire CLI commands to generator
-2. Wire generator to formatters
-3. Add library loading from Rules directory
-4. Create integration tests
-5. Validate all output formats
 
 ---
 
 ## Dependencies
 
-### Core Dependencies
+### Core
 ```
 typer>=0.9.0          # CLI framework
 pydantic>=2.0.0       # Data validation
 pyyaml>=6.0           # YAML parsing
-requests>=2.31.0      # HTTP client
 rich>=13.0.0          # Terminal UI
-pathspec>=0.11.0      # Glob patterns
+openai>=1.0.0         # OpenAI API
+anthropic>=0.8.0      # Anthropic API
 jinja2>=3.1.0         # Templating
+pathspec>=0.11.0      # Glob patterns
 ```
 
-### Development Dependencies
+### Development
 ```
 pytest>=7.0.0         # Testing
-pytest-cov>=4.0.0     # Coverage
 black>=23.0.0         # Formatting
 ruff>=0.1.0           # Linting
 mypy>=1.0.0           # Type checking
@@ -505,95 +562,68 @@ mypy>=1.0.0           # Type checking
 
 ---
 
-## Testing Strategy
-
-### Unit Tests
-- Test each detector with sample project structures
-- Test config serialization/deserialization
-- Test CLI argument parsing
-- Test rule compiler with mock rules
-- Test each formatter with sample rules
-
-### Integration Tests
-- Test full `init` flow with sample projects
-- Test `update` command (mock GitHub API)
-- Test `status` command with various configs
-- Test multi-formatter sync
-
-### Test Fixtures
-Create minimal project structures in `tests/fixtures/`:
-```
-fixtures/
-├── nextjs-project/
-│   ├── package.json (with next dependency)
-│   └── app/
-├── django-project/
-│   ├── requirements.txt (with django)
-│   └── manage.py
-├── rust-project/
-│   ├── Cargo.toml
-│   └── src/
-└── ...
-```
-
----
-
 ## Acceptance Criteria
 
-### CLI Foundation
-- [ ] All 3 commands work: init, update, status
-- [ ] Detects at least 10 different technology stacks
-- [ ] Confidence score calculation works correctly
-- [ ] Configuration persists correctly to `.rulesmith/config.json`
-- [ ] Library update pulls from GitHub (or local Rules dir)
-- [ ] CLI help text is comprehensive
-- [ ] Error handling is robust
+### Mode 1: New Project
+- [ ] Accept user prompt as CLI argument
+- [ ] Run 10-15 question interview (5 min max)
+- [ ] Generate PRD via LLM (GPT-4 or Claude)
+- [ ] Parse PRD to extract stack/domain requirements
+- [ ] Select appropriate rules from `/rules` library
+- [ ] Output PRD.md + AI assistant rules
+- [ ] Allow regeneration with different LLM/temperature
 
-### Generator
-- [ ] Quick mode asks 3-5 questions, completes in <2 minutes
-- [ ] Guided mode asks 15-20 questions, covers all aspects
-- [ ] Interview engine supports all question types
-- [ ] Rule compiler correctly resolves includes
-- [ ] Compiled rules are sorted by weight
-- [ ] Requirements document is generated correctly
-- [ ] Can override detected stack with manual selection
+### Mode 2: Existing Project
+- [ ] Detect stack from project files (10+ techs)
+- [ ] Run 3-4 quick context questions
+- [ ] Select rules based on detection
+- [ ] Output AI assistant rules only
+- [ ] Validate output files are correct format
 
-### Formatters
-- [ ] Cursor formatter creates valid .mdc files
-- [ ] Claude formatter creates valid CLAUDE.md
-- [ ] Copilot formatter creates valid copilot-instructions.md
-- [ ] All formatters handle multiple rules correctly
-- [ ] File naming conventions are consistent
-- [ ] Registry system allows adding new formatters
-- [ ] Sync engine updates all formatters in one call
-
-### Overall
+### Both Modes
 - [ ] All tests pass (>80% coverage)
-- [ ] Documentation is complete
-- [ ] Code follows style guidelines (Ruff/Black)
-- [ ] No security vulnerabilities
-- [ ] Performance is acceptable (<5s for init command)
+- [ ] Support Cursor, Claude, Copilot output formats
+- [ ] Config persistence in `.rulesmith/config.json`
+- [ ] Library update mechanism from `/rules` folder
+- [ ] Documentation complete
 
 ---
 
-## Reference Documents
+## Future Enhancements (v2.1+)
 
-### Agent Plans (Implementation Details)
-1. **Agent 1 - CLI Foundation:** `/Users/dars/Development/opencode-projects/experiment/agent1-cli-foundation-PLAN.md`
-2. **Agent 2 - Rule Library:** `/Users/dars/Development/opencode-projects/experiment/agent2-rule-library-PLAN.md`
-3. **Agent 3 - Generator:** `/Users/dars/Development/opencode-projects/experiment/agent3-generator-PLAN.md`
-4. **Agent 4 - Formatters:** `/Users/dars/Development/opencode-projects/experiment/agent4-formatters-PLAN.md`
+### Skills System
+- Specialized interviewers for specific domains
+- e.g., "API design skill", "Database schema skill"
 
-### Rules Library
-- **Rules Directory:** `/Users/dars/Development/opencode-projects/experiment/Rules/`
+### Schema Validation
+- JSON Schema for PRDs
+- Validation before rule generation
+- Schema evolution management
+
+### Template Library
+- Pre-built PRD templates for common project types
+- Community-contributed templates
+
+### Integration
+- GitHub Actions for CI/CD rule generation
+- IDE plugins (VS Code, JetBrains)
+- Web UI for non-technical users
+
+---
+
+## Reference Files
+
+### External Dependencies
+- **Rules Library:** `/Users/dars/Development/opencode-projects/experiment/Rules/`
+  - Core rules: `core/*.md`
+  - Stack rules: `stacks/*.md`
+  - Domain rules: `domains/*.md`
 - **Library Index:** `/Users/dars/Development/opencode-projects/experiment/rulesmith-library/index.yaml`
-- **Library README:** `/Users/dars/Development/opencode-projects/experiment/Rules/README.md`
 
-### Example Rule Files to Study
-- **Communication:** `/Users/dars/Development/opencode-projects/experiment/Rules/core/communication.md`
-- **Security:** `/Users/dars/Development/opencode-projects/experiment/Rules/core/security-baseline.md`
-- **PRD-Driven:** `/Users/dars/Development/opencode-projects/experiment/Rules/core/prd-driven-development.md`
-- **Next.js Stack:** `/Users/dars/Development/opencode-projects/experiment/Rules/stacks/nextjs.md`
+### Previous Plans
+- **Agent 1:** CLI Foundation (`../agent1-cli-foundation-PLAN.md`)
+- **Agent 3:** Generator (`../agent3-generator-PLAN.md`)
+- **Agent 4:** Formatters (`../agent4-formatters-PLAN.md`)
 
 ---
 
@@ -601,16 +631,20 @@ fixtures/
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 1.0.0 | 2026-02-03 | Initial PRD |
+| 2.0.0 | 2026-02-03 | Major revamp - Added LLM PRD generation, dual-mode architecture |
+| 1.0.0 | 2026-02-03 | Initial PRD - Focus on existing projects only |
 
 ---
 
 ## Next Steps
 
-1. ✅ Create rulesmith directory and initialize git
-2. ✅ Create PRD document
-3. ⏳ Set up project structure
-4. ⏳ Build CLI foundation
-5. ⏳ Build Generator
-6. ⏳ Build Formatters
-7. ⏳ Integration and testing
+1. ✅ Create project structure
+2. ✅ Build CLI foundation with commands
+3. ✅ Implement stack detection
+4. ✅ Build interview engine
+5. ⏳ **Add LLM integration for PRD generation**
+6. ⏳ **Add PRD parser to extract stack info**
+7. ⏳ **Connect Mode 1 workflow**
+8. ⏳ Wire formatters to generate actual files
+9. ⏳ Add tests
+10. ⏳ Create installable package
