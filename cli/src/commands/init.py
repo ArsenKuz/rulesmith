@@ -15,13 +15,7 @@ app = typer.Typer(help="Initialize AI rules for current project")
 console = Console()
 
 
-@app.callback()
-def init_callback():
-    """Initialize AI rules for the current project."""
-    pass
-
-
-@app.command()
+@app.callback(invoke_without_command=True)
 def init(
     quick: bool = typer.Option(False, "--quick", "-q", help="Quick mode with 3-5 questions"),
     guided: bool = typer.Option(
@@ -89,9 +83,9 @@ def init(
         config = ProjectConfig(
             project_name=project_path.name,
             project_root=project_path,
-            detected_stack=result.primary,
-            stack_confidence=result.confidence,
-            detected_signals=result.all_signals,
+            detected_stack=result["primary"],
+            stack_confidence=0.95,
+            detected_signals=result["all_signals"],
             selected_stack=final_stack if stack else None,
             generation_mode=mode,
             active_formatters=target_tools,

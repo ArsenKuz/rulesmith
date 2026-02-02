@@ -13,7 +13,7 @@ app = typer.Typer(help="Show project status")
 console = Console()
 
 
-@app.command()
+@app.callback(invoke_without_command=True)
 def status(
     project_path: Path = typer.Argument(Path("."), help="Path to project"),
 ):

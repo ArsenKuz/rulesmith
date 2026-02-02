@@ -12,7 +12,7 @@ app = typer.Typer(help="Update rule library")
 console = Console()
 
 
-@app.command()
+@app.callback(invoke_without_command=True)
 def update(
     project_path: Path = typer.Argument(Path("."), help="Path to project"),
 ):
