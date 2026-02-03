@@ -8,6 +8,7 @@ from rich import box
 from rich.columns import Columns
 from rich.align import Align
 from cli.src.commands import init, update, status, prd, apikey, new
+from cli.src.commands.shell import start_shell
 
 console = Console()
 
@@ -131,17 +132,23 @@ app.command(name="status")(status.status_command)
 def main_callback(
     ctx: typer.Context,
     version: bool = typer.Option(False, "--version", "-v", help="Show version"),
+    no_shell: bool = typer.Option(False, "--no-shell", help="Show help instead of starting REPL"),
 ):
-    """Main callback - shows hero banner when no command given."""
+    """Main callback - starts REPL when no command given."""
     if version:
         console.print(f"[bold cyan]Rulesmith[/bold cyan] version [bold]{VERSION}[/bold]")
         raise typer.Exit()
 
-    # If no command provided, show hero banner and help
+    # If no command provided, start REPL by default
     if ctx.invoked_subcommand is None:
-        show_hero_banner()
-        show_quick_start()
-        console.print(ctx.get_help())
+        if no_shell:
+            # Show traditional help
+            show_hero_banner()
+            show_quick_start()
+            console.print(ctx.get_help())
+        else:
+            # Start interactive REPL
+            start_shell()
 
 
 if __name__ == "__main__":

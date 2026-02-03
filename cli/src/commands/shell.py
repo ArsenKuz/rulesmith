@@ -1,0 +1,306 @@
+"""Interactive REPL shell for Rulesmith CLI.
+
+Provides a persistent shell environment where users can execute
+Rulesmith commands without prefixing with 'rulesmith' each time.
+"""
+
+import sys
+import shlex
+from pathlib import Path
+from typing import List, Optional
+from rich.console import Console
+from rich.prompt import Prompt
+from rich.panel import Panel
+from rich.text import Text
+from rich import box
+
+# Import commands
+from cli.src.commands import (
+    init_command,
+    update_command,
+    status_command,
+    prd_command,
+    apikey_app,
+    new_command,
+)
+
+console = Console()
+
+
+class RulesmithREPL:
+    """Interactive REPL for Rulesmith CLI."""
+
+    def __init__(self):
+        self.running = False
+        self.commands = {
+            "init": self._cmd_init,
+            "new": self._cmd_new,
+            "prd": self._cmd_prd,
+            "apikey": self._cmd_apikey,
+            "update": self._cmd_update,
+            "status": self._cmd_status,
+            "help": self._cmd_help,
+            "exit": self._cmd_exit,
+            "quit": self._cmd_exit,
+        }
+
+    def start(self) -> None:
+        """Start the REPL loop."""
+        self.running = True
+
+        # Show welcome message
+        self._show_welcome()
+
+        # REPL loop
+        while self.running:
+            try:
+                # Get user input
+                user_input = Prompt.ask("[bold cyan]rulesmith>[/bold cyan]").strip()
+
+                if not user_input:
+                    continue
+
+                # Parse command
+                parts = shlex.split(user_input)
+                command = parts[0].lower()
+                args = parts[1:]
+
+                # Execute command
+                if command in self.commands:
+                    try:
+                        self.commands[command](args)
+                    except Exception as e:
+                        console.print(f"[red]Error: {e}[/red]")
+                else:
+                    console.print(f"[red]Unknown command: {command}[/red]")
+                    console.print("Type 'help' for available commands.")
+
+            except KeyboardInterrupt:
+                console.print("\n[yellow]Use 'exit' or 'quit' to leave.[/yellow]")
+            except EOFError:
+                console.print("\n[dim]Goodbye![/dim]")
+                break
+
+    def _show_welcome(self) -> None:
+        """Show welcome message and available commands."""
+        console.print()
+        console.print(
+            Panel.fit(
+                "[bold green]🚀 Rulesmith Interactive Shell[/bold green]\n"
+                "[dim]Type 'help' for available commands or 'exit' to quit.[/dim]",
+                border_style="green",
+                box=box.ROUNDED,
+            )
+        )
+        console.print()
+
+    def _cmd_init(self, args: List[str]) -> None:
+        """Handle init command."""
+        import typer
+        from cli.src.commands import init_command
+
+        # Parse arguments
+        quick = "--quick" in args or "-q" in args
+        guided = "--guided" in args or "-g" in args
+        stack = None
+        path = Path(".")
+
+        # Parse --stack and --path
+        for i, arg in enumerate(args):
+            if arg in ["--stack", "-s"] and i + 1 < len(args):
+                stack = args[i + 1]
+            elif arg in ["--path", "-p"] and i + 1 < len(args):
+                path = Path(args[i + 1])
+
+        # Call the init function directly
+        init_command(
+            quick=quick,
+            guided=guided,
+            stack=stack,
+            path=path,
+        )
+
+    def _cmd_new(self, args: List[str]) -> None:
+        """Handle new command."""
+        from pathlib import Path
+        from cli.src.commands import new_command
+
+        # Parse arguments
+        prompt = None
+        output = Path(".")
+        guided = "--guided" in args or "-g" in args
+        quick = "--quick" in args or "-q" in args
+        llm_provider = "openai"
+        llm_model = None
+        dry_run = "--dry-run" in args
+
+        # Get prompt (first non-flag argument)
+        i = 0
+        while i < len(args):
+            arg = args[i]
+            if not arg.startswith("-"):
+                prompt = arg
+                break
+            elif arg in ["--output", "-o"] and i + 1 < len(args):
+                output = Path(args[i + 1])
+                i += 2
+            elif arg in ["--provider", "-p"] and i + 1 < len(args):
+                llm_provider = args[i + 1]
+                i += 2
+            elif arg in ["--model", "-m"] and i + 1 < len(args):
+                llm_model = args[i + 1]
+                i += 2
+            else:
+                i += 1
+
+        # Call the new function
+        new_command(
+            prompt=prompt,
+            output=output,
+            guided=guided,
+            quick=quick,
+            llm_provider=llm_provider,
+            llm_model=llm_model,
+            dry_run=dry_run,
+        )
+
+    def _cmd_prd(self, args: List[str]) -> None:
+        """Handle prd command."""
+        from pathlib import Path
+        from cli.src.commands import prd_command
+
+        # Parse arguments
+        path = Path(".")
+        quick = "--quick" in args or "-q" in args
+        output = None
+
+        i = 0
+        while i < len(args):
+            arg = args[i]
+            if arg in ["--path", "-p"] and i + 1 < len(args):
+                path = Path(args[i + 1])
+                i += 2
+            elif arg in ["--output", "-o"] and i + 1 < len(args):
+                output = args[i + 1]
+                i += 2
+            else:
+                i += 1
+
+        # Call the prd function
+        prd_command(
+            path=path,
+            output=output,
+            quick=quick,
+        )
+
+    def _cmd_apikey(self, args: List[str]) -> None:
+        """Handle apikey command."""
+        if not args:
+            console.print("[red]Usage: apikey <list|set|remove|show|test> [provider][/red]")
+            return
+
+        action = args[0].lower()
+        provider = args[1] if len(args) > 1 else None
+
+        if action == "list":
+            # Import and call list function
+            from cli.src.commands.apikey import list_keys
+
+            list_keys()
+        elif action == "set":
+            if not provider:
+                console.print("[red]Usage: apikey set <provider>[/red]")
+                return
+            from cli.src.commands.apikey import set_key
+
+            set_key(provider)
+        elif action == "remove":
+            if not provider:
+                console.print("[red]Usage: apikey remove <provider>[/red]")
+                return
+            from cli.src.commands.apikey import remove_key
+
+            remove_key(provider)
+        elif action == "show":
+            if not provider:
+                console.print("[red]Usage: apikey show <provider>[/red]")
+                return
+            from cli.src.commands.apikey import show_key
+
+            show_key(provider)
+        elif action == "test":
+            if not provider:
+                console.print("[red]Usage: apikey test <provider>[/red]")
+                return
+            from cli.src.commands.apikey import test_key
+
+            test_key(provider)
+        else:
+            console.print(f"[red]Unknown apikey action: {action}[/red]")
+            console.print("Available: list, set, remove, show, test")
+
+    def _cmd_update(self, args: List[str]) -> None:
+        """Handle update command."""
+        from cli.src.commands import update_command
+
+        # Call the update function
+        update_command()
+
+    def _cmd_status(self, args: List[str]) -> None:
+        """Handle status command."""
+        from cli.src.commands import status_command
+
+        # Call the status function
+        status_command()
+
+    def _cmd_help(self, args: List[str]) -> None:
+        """Show help message."""
+        help_text = """
+[bold]Available Commands:[/bold]
+
+[green]init[/green] [dim][options][/dim]
+  Initialize AI rules for current project
+  Options: --quick, --guided, --stack <stack>, --path <path>
+
+[green]new[/green] [dim]<prompt> [options][/dim]
+  Create a new project with AI-generated PRD
+  Options: --output, --guided, --quick, --provider, --model, --dry-run
+
+[green]prd[/green] [dim][options][/dim]
+  Generate Product Requirements Document
+  Options: --path, --output, --quick
+
+[green]apikey[/green] [dim]<action> [provider][/dim]
+  Manage API keys for LLM providers
+  Actions: list, set, remove, show, test
+
+[green]update[/green]
+  Update rule library from remote repository
+
+[green]status[/green]
+  Show current project configuration
+
+[green]help[/green]
+  Show this help message
+
+[green]exit[/green] / [green]quit[/green]
+  Exit the REPL shell
+
+[dim]Press Ctrl+C to cancel current operation.[/dim]
+"""
+        console.print(help_text)
+
+    def _cmd_exit(self, args: List[str]) -> None:
+        """Exit the REPL."""
+        console.print("[dim]Goodbye![/dim]")
+        self.running = False
+
+
+def start_shell() -> None:
+    """Entry point to start the REPL shell."""
+    repl = RulesmithREPL()
+    repl.start()
+
+
+if __name__ == "__main__":
+    start_shell()
