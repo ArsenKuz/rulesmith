@@ -1,141 +1,169 @@
-"""
-Interview engine for Rulesmith Generator.
-Handles the interactive questioning flow.
-"""
+"""Interview engine for asking questions and collecting responses."""
 
-from typing import Any, Dict, List, Optional
-
+from typing import Any, List
+from pathlib import Path
 from rich.console import Console
-from rich.prompt import Confirm, IntPrompt, Prompt
-
-from rulesmith.generator.src.models.interview import InterviewState, Question, QuestionType
+from rich.prompt import Prompt, Confirm, IntPrompt
+from rich.panel import Panel
+from rich.text import Text
+from rich.columns import Columns
+from ..models.interview import Question, QuestionType, InterviewState
 
 
 class InterviewEngine:
-    """Engine for conducting interactive interviews."""
+    """Engine for conducting interviews."""
 
-    def __init__(self, questions: List[Question], console: Console):
-        self.questions = {q.id: q for q in questions}
-        self.questions_order = [q.id for q in questions]
-        self.console = console
+    def __init__(self, questions: List[Question], console: Console = None):
+        self.questions = questions
         self.state = InterviewState()
+        self.console = console or Console()
 
-    def run(self) -> Dict[str, Any]:
-        """Run the interview and return all answers."""
-        self.console.print("[bold blue]Rulesmith Configuration Interview[/bold blue]")
-        self.console.print("=" * 50)
-        self.console.print()
+    def run(self) -> dict[str, Any]:
+        """Run the interview and return collected answers."""
+        self.console.print(
+            Panel.fit(
+                "[bold blue]AI Rules Generator[/bold blue]\n"
+                "Let's create custom AI rules for your project!",
+                border_style="blue",
+            )
+        )
 
-        for question_id in self.questions_order:
-            question = self.questions[question_id]
+        while self.state.current_question < len(self.questions):
+            question = self.questions[self.state.current_question]
 
-            if self.state.should_skip(question):
+            # Check skip condition
+            if question.skip_if and self._evaluate_condition(question.skip_if):
+                self.state.current_question += 1
                 continue
 
-            self.state.current_question = question_id
+            # Ask question
             answer = self._ask_question(question)
-            self.state.record_answer(question_id, answer)
 
-        self.console.print()
-        self.console.print("[bold green]Interview complete![/bold green]")
+            if answer is None and question.required:
+                self.console.print("[red]This question is required.[/red]")
+                continue
+
+            # Store answer
+            self.state.answers[question.id] = answer
+            self.state.history.append({"question": question.id, "answer": answer})
+            self.state.current_question += 1
 
         return self.state.answers
 
     def _ask_question(self, question: Question) -> Any:
-        """Ask a single question based on its type."""
+        """Render a single question based on type."""
+        # Display question
+        self.console.print(f"\n[bold]{question.text}[/bold]")
         if question.description:
             self.console.print(f"[dim]{question.description}[/dim]")
 
+        # Render based on type
         if question.type == QuestionType.TEXT:
-            return self._ask_text(question)
+            return Prompt.ask("Your answer", default=question.default)
+
         elif question.type == QuestionType.CHOICE:
-            return self._ask_choice(question)
+            return self._ask_choice(question.options, question.default)
+
         elif question.type == QuestionType.MULTIPLE_CHOICE:
-            return self._ask_multiple_choice(question)
+            return self._ask_multiple_choice(question.options, question.default)
+
         elif question.type == QuestionType.CONFIRM:
-            return self._ask_confirm(question)
+            return Confirm.ask(question.text, default=question.default or False)
+
         elif question.type == QuestionType.PATH:
-            return self._ask_path(question)
-        else:
-            return self._ask_text(question)
+            path = Prompt.ask("Path", default=question.default)
+            return Path(path).expanduser().resolve()
 
-    def _ask_text(self, question: Question) -> str:
-        """Ask a text question."""
-        default = question.default if question.default is not None else ""
+        return None
 
-        if question.required:
-            return Prompt.ask(
-                f"[bold]{question.text}[/bold]", default=default, console=self.console
-            )
-        else:
-            result = Prompt.ask(
-                f"[bold]{question.text}[/bold] (optional)", default=default, console=self.console
-            )
-            return result if result else None
-
-    def _ask_choice(self, question: Question) -> str:
+    def _ask_choice(self, options: List[str], default: Any = None) -> str:
         """Ask a single choice question."""
-        self.console.print(f"[bold]{question.text}[/bold]")
+        if not options:
+            return None
 
-        for i, option in enumerate(question.options or [], 1):
-            self.console.print(f"  {i}. {option}")
+        # Display options
+        for i, option in enumerate(options, 1):
+            self.console.print(f"  [{i}] {option}")
 
-        default_idx = 1
-        if question.default and question.options:
-            try:
-                default_idx = question.options.index(question.default) + 1
-            except ValueError:
-                default_idx = 1
+        default_num = None
+        if default and default in options:
+            default_num = options.index(default) + 1
 
-        choice = IntPrompt.ask("Enter number", default=default_idx, console=self.console)
+        prompt_text = "Enter number"
+        if default_num:
+            choice = IntPrompt.ask(prompt_text, default=default_num)
+        else:
+            choice = IntPrompt.ask(prompt_text)
 
-        if question.options and 1 <= choice <= len(question.options):
-            return question.options[choice - 1]
-        return question.options[0] if question.options else ""
+        if 1 <= choice <= len(options):
+            return options[choice - 1]
+        return None
 
-    def _ask_multiple_choice(self, question: Question) -> List[str]:
+    def _ask_multiple_choice(
+        self, options: List[str], default: Any = None
+    ) -> List[str]:
         """Ask a multiple choice question."""
-        self.console.print(f"[bold]{question.text}[/bold]")
-        self.console.print("[dim]Enter numbers separated by commas (e.g., 1,3,4)[/dim]")
-
-        for i, option in enumerate(question.options or [], 1):
-            self.console.print(f"  {i}. {option}")
-
-        if not question.required:
-            self.console.print("  0. None / Skip")
-
-        default_str = ""
-        if question.default and question.options:
-            if isinstance(question.default, list):
-                try:
-                    indices = [str(question.options.index(d) + 1) for d in question.default]
-                    default_str = ",".join(indices)
-                except ValueError:
-                    default_str = ""
-
-        response = Prompt.ask("Enter numbers", default=default_str, console=self.console)
-
-        if not response:
+        if not options:
             return []
 
+        # Display options
+        self.console.print(
+            "[dim]Select multiple by entering numbers separated by commas (e.g., 1,3,5)[/dim]"
+        )
+        for i, option in enumerate(options, 1):
+            self.console.print(f"  [{i}] {option}")
+
+        # Get input
+        default_str = None
+        if default and isinstance(default, list):
+            default_nums = [str(options.index(d) + 1) for d in default if d in options]
+            if default_nums:
+                default_str = ",".join(default_nums)
+
+        if default_str:
+            response = Prompt.ask("Enter numbers", default=default_str)
+        else:
+            response = Prompt.ask("Enter numbers")
+
+        # Parse response
+        selected = []
         try:
-            indices = [int(x.strip()) for x in response.split(",")]
-            if 0 in indices:
-                return []
-            selected = []
-            for idx in indices:
-                if question.options and 1 <= idx <= len(question.options):
-                    selected.append(question.options[idx - 1])
-            return selected
+            for num_str in response.split(","):
+                num = int(num_str.strip())
+                if 1 <= num <= len(options):
+                    selected.append(options[num - 1])
         except ValueError:
-            return []
+            pass
 
-    def _ask_confirm(self, question: Question) -> bool:
-        """Ask a yes/no confirmation question."""
-        default = question.default if isinstance(question.default, bool) else True
-        return Confirm.ask(f"[bold]{question.text}[/bold]", default=default, console=self.console)
+        return selected
 
-    def _ask_path(self, question: Question) -> str:
-        """Ask for a file/directory path."""
-        default = question.default if question.default is not None else "."
-        return Prompt.ask(f"[bold]{question.text}[/bold]", default=default, console=self.console)
+    def _evaluate_condition(self, condition: str) -> bool:
+        """Evaluate a skip condition against current answers."""
+        # Simple condition evaluation
+        # Format: "question_id == value" or "question_id != value"
+        # or "question_id contains value"
+        try:
+            if "==" in condition:
+                parts = condition.split("==")
+                qid = parts[0].strip()
+                expected = parts[1].strip().strip('"').lower()
+                actual = str(self.state.answers.get(qid, "")).lower()
+                return actual == expected or actual == "true"
+
+            elif "!=" in condition:
+                parts = condition.split("!=")
+                qid = parts[0].strip()
+                expected = parts[1].strip().strip('"').lower()
+                actual = str(self.state.answers.get(qid, "")).lower()
+                return actual != expected
+
+            elif "contains" in condition:
+                parts = condition.split("contains")
+                qid = parts[0].strip()
+                search = parts[1].strip().strip('"').lower()
+                actual = str(self.state.answers.get(qid, "")).lower()
+                return search in actual
+        except Exception:
+            pass
+
+        return False

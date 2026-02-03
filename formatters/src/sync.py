@@ -1,10 +1,16 @@
-"""Sync engine for multiple formatters."""
+"""Sync engine for coordinating multiple formatters."""
 
+import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
-from formatters.src.base import FormatterConfig
-from formatters.src.registry import get_formatter
+# Handle both relative and absolute imports
+try:
+    from .registry import get_formatter
+    from .base import FormatterConfig
+except ImportError:
+    from registry import get_formatter
+    from base import FormatterConfig
 
 
 class SyncEngine:
@@ -22,16 +28,20 @@ class SyncEngine:
         self.project_root = project_root
         self.target_tools = target_tools
 
-    def sync_all(self) -> Dict[str, Dict[str, Any]]:
+    def sync_all(self) -> Dict[str, dict]:
         """Generate rules for all target tools."""
-        results: Dict[str, Dict[str, Any]] = {}
+        results = {}
 
         for tool_id in self.target_tools:
             try:
                 formatter_class = get_formatter(tool_id)
                 formatter = formatter_class(FormatterConfig())
 
-                result = formatter.format_rules(self.rules, self.context, self.project_root)
+                result = formatter.format_rules(
+                    self.rules,
+                    self.context,
+                    self.project_root,
+                )
 
                 results[tool_id] = {
                     "success": result.success,
@@ -41,13 +51,16 @@ class SyncEngine:
                 }
 
             except Exception as e:
-                results[tool_id] = {"success": False, "error": str(e)}
+                results[tool_id] = {
+                    "success": False,
+                    "error": str(e),
+                }
 
         return results
 
     def validate_all(self) -> Dict[str, bool]:
         """Validate all generated outputs."""
-        validations: Dict[str, bool] = {}
+        validations = {}
 
         for tool_id in self.target_tools:
             try:
@@ -59,6 +72,12 @@ class SyncEngine:
                     path = self.project_root / ".cursor" / "rules"
                 elif tool_id == "claude":
                     path = self.project_root / "CLAUDE.md"
+                elif tool_id == "copilot":
+                    path = self.project_root / ".github" / "copilot-instructions.md"
+                elif tool_id == "roo":
+                    path = self.project_root / ".roo" / "rules"
+                elif tool_id == "continue":
+                    path = self.project_root / ".continuerules"
                 else:
                     validations[tool_id] = False
                     continue

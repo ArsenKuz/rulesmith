@@ -1,10 +1,10 @@
-"""Rule assembly and compilation."""
+"""Rule compiler for assembling rules from library."""
 
 import re
+from typing import Dict, List, Set
 from pathlib import Path
-from typing import Any, Dict, List, Set
-
 import yaml
+from ..models.assembly import CompiledRule
 
 
 class RuleCompiler:
@@ -13,11 +13,10 @@ class RuleCompiler:
     def __init__(self, library_path: Path):
         self.library_path = library_path
         self.resolved_rules: Set[str] = set()
-        self.compiled_rules: List[Dict[str, Any]] = []
 
     def compile(
-        self, selected_stack: str, interview_answers: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        self, selected_stack: str, interview_answers: Dict
+    ) -> List[CompiledRule]:
         """
         Compile rules based on stack selection and interview answers.
 
@@ -41,7 +40,9 @@ class RuleCompiler:
         domain_rules = self._select_domain_rules(index, interview_answers)
 
         # Resolve all includes and dependencies
-        all_rule_ids = self._resolve_dependencies(core_rules + stack_rules + domain_rules, index)
+        all_rule_ids = self._resolve_dependencies(
+            core_rules + stack_rules + domain_rules, index
+        )
 
         # Load and compile each rule
         compiled = []
@@ -53,17 +54,20 @@ class RuleCompiler:
                 compiled.append(personalized)
 
         # Sort by weight
-        compiled.sort(key=lambda x: x.get("weight", 50), reverse=True)
+        compiled.sort(key=lambda x: x.weight, reverse=True)
 
         return compiled
 
-    def _load_index(self) -> Dict[str, Any]:
+    def _load_index(self) -> Dict:
         """Load library index.yaml."""
         index_path = self.library_path / "index.yaml"
+        if not index_path.exists():
+            return {"categories": {}}
+
         with open(index_path) as f:
             return yaml.safe_load(f)
 
-    def _get_core_rules(self, index: Dict[str, Any]) -> List[str]:
+    def _get_core_rules(self, index: Dict) -> List[str]:
         """Get IDs of all core rules that alwaysApply."""
         rules = []
         for rule in index.get("categories", {}).get("core", {}).get("rules", []):
@@ -71,7 +75,7 @@ class RuleCompiler:
                 rules.append(rule["id"])
         return rules
 
-    def _get_stack_rules(self, index: Dict[str, Any], stack_id: str) -> List[str]:
+    def _get_stack_rules(self, index: Dict, stack_id: str) -> List[str]:
         """Get rules for selected stack."""
         stacks = index.get("categories", {}).get("stacks", {}).get("rules", [])
         for stack in stacks:
@@ -80,31 +84,47 @@ class RuleCompiler:
                 return [stack_id] + stack.get("includes", [])
         return []
 
-    def _select_domain_rules(self, index: Dict[str, Any], answers: Dict[str, Any]) -> List[str]:
+    def _select_domain_rules(self, index: Dict, answers: Dict) -> List[str]:
         """Select domain rules based on interview answers."""
         selected = []
 
-        # Example logic:
+        # Testing approach
         if answers.get("testing_approach") == "TDD (Test-Driven Development)":
             selected.append("testing-unit")
             selected.append("testing-integration")
 
+        # Performance
         if answers.get("performance_critical"):
             selected.append("performance-optimization")
 
-        if answers.get("security_compliance") != "None":
+        # Security
+        if (
+            answers.get("security_compliance")
+            and answers.get("security_compliance") != "None"
+        ):
             selected.append("security-compliance")
 
-        # Add frontend domain if project is web-based
-        purpose = answers.get("project_purpose", "").lower()
-        if any(term in purpose for term in ["web", "saas", "e-commerce", "content"]):
-            selected.append("web-frontend")
+        # Documentation level
+        if (
+            answers.get("documentation_level")
+            == "Comprehensive (API docs, ADRs, runbooks)"
+        ):
+            selected.append("documentation-adr")
+
+        # Code style
+        if answers.get("code_style") == "Very strict (enforced by CI)":
+            selected.append("linting-strict")
+
+        # Team size - collaboration rules
+        team_size = answers.get("team_size", "")
+        if "Medium" in team_size or "Large" in team_size:
+            selected.append("collaboration-practices")
 
         return selected
 
-    def _resolve_dependencies(self, rule_ids: List[str], index: Dict[str, Any]) -> Set[str]:
+    def _resolve_dependencies(self, rule_ids: List[str], index: Dict) -> Set[str]:
         """Resolve all includes recursively."""
-        resolved: Set[str] = set()
+        resolved = set()
         to_process = list(rule_ids)
 
         while to_process:
@@ -123,11 +143,11 @@ class RuleCompiler:
 
         return resolved
 
-    def _load_rule(self, rule_id: str, index: Dict[str, Any]) -> Dict[str, Any]:
+    def _load_rule(self, rule_id: str, index: Dict) -> CompiledRule:
         """Load rule file from disk."""
         # Find rule in index
-        file_path: Path | None = None
-        category_name = ""
+        file_path = None
+        category_name = None
 
         for cat_name, category in index.get("categories", {}).items():
             for rule in category.get("rules", []):
@@ -139,43 +159,52 @@ class RuleCompiler:
                 break
 
         if not file_path or not file_path.exists():
-            return {}
+            return None
 
         # Parse YAML frontmatter + Markdown
         content = file_path.read_text()
         return self._parse_rule_file(content, rule_id, category_name)
 
-    def _parse_rule_file(self, content: str, rule_id: str, category: str) -> Dict[str, Any]:
+    def _parse_rule_file(
+        self, content: str, rule_id: str, category: str
+    ) -> CompiledRule:
         """Parse rule file into structured format."""
         # Extract frontmatter
         match = re.match(r"^---\n(.*?)\n---\n", content, re.DOTALL)
         if not match:
-            return {}
+            return None
 
         frontmatter = yaml.safe_load(match.group(1))
         body = content[match.end() :]
 
-        return {
-            "id": rule_id,
-            "description": frontmatter.get("description", ""),
-            "globs": frontmatter.get("globs", "*"),
-            "alwaysApply": frontmatter.get("alwaysApply", False),
-            "weight": frontmatter.get("weight", 50),
-            "content": body,
-            "frontmatter": frontmatter,
-            "category": category,
-        }
+        return CompiledRule(
+            id=rule_id,
+            description=frontmatter.get("description", ""),
+            globs=frontmatter.get("globs", "*"),
+            alwaysApply=frontmatter.get("alwaysApply", False),
+            weight=frontmatter.get("weight", 50),
+            content=body,
+            frontmatter=frontmatter,
+            category=category,
+        )
 
-    def _personalize_rule(self, rule: Dict[str, Any], answers: Dict[str, Any]) -> Dict[str, Any]:
+    def _personalize_rule(self, rule: CompiledRule, answers: Dict) -> CompiledRule:
         """Personalize rule content based on interview answers."""
-        personalized = rule.copy()
-        content = rule["content"]
-
         # Simple template substitution
+        content = rule.content
+
         for key, value in answers.items():
             placeholder = f"{{{{{key}}}}}"
             if placeholder in content:
                 content = content.replace(placeholder, str(value))
 
-        personalized["content"] = content
-        return personalized
+        return CompiledRule(
+            id=rule.id,
+            description=rule.description,
+            globs=rule.globs,
+            alwaysApply=rule.alwaysApply,
+            weight=rule.weight,
+            content=content,
+            frontmatter=rule.frontmatter,
+            category=rule.category,
+        )

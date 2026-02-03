@@ -1,0 +1,53 @@
+# index.yaml
+version: "1.0.0"
+updated_at: "2025-02-01T00:00:00Z"
+repository: "https://github.com/user/rulesmith-library"
+
+categories:
+  core:
+    description: "Universal rules applying to all projects"
+    rules:
+      - id: communication
+        file: 00-core/communication.md
+        description: "Communication style and interaction patterns"
+        alwaysApply: true
+        weight: 100
+        
+      - id: security-baseline
+        file: 00-core/security-baseline.md
+        description: "Security best practices"
+        alwaysApply: true
+        weight: 90
+        
+      - id: error-handling
+        file: 00-core/error-handling.md
+        description: "Error handling and recovery patterns"
+        alwaysApply: true
+        weight: 80
+        
+      - id: documentation
+        file: 00-core/documentation.md
+        description: "Documentation standards and practices"
+        alwaysApply: true
+        weight: 60
+        
+      - id: code-review
+        file: 00-core/code-review.md
+        description: "Self-review checklist before submitting code"
+        alwaysApply: false
+        weight: 40
+        
+  domains:
+    description: "Domain-specific rule categories"
+    rules:
+      - id: web-frontend
+        file: 10-domains/web-frontend.md
+        description: "Frontend web development"
+        globs: ["**/*.{tsx,jsx,vue,svelte}"]
+        weight: 70
+        
+      - id: web-backend
+        file: 10-domains/web-backend.md
+        description: "Backend API development"
+        globs: ["**/api/**/*"]
+        weight: 70

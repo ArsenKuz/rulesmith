@@ -1,131 +1,131 @@
-"""CLI commands for Rulesmith."""
-
-from pathlib import Path
-from typing import Optional
+"""Init command - Initialize AI rules for current project."""
 
 import typer
+from pathlib import Path
+from typing import Optional
 from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.panel import Panel
 from rich.table import Table
+from rich import box
 
-from cli.src.config import ConfigManager
-from cli.src.detectors import StackDetector
+from cli.src.detectors.stack_detector import StackDetector
+from cli.src.config.manager import ConfigManager
 
-app = typer.Typer(help="Initialize AI rules for current project")
+app = typer.Typer()
 console = Console()
 
 
-@app.callback(invoke_without_command=True)
-def init(
-    quick: bool = typer.Option(False, "--quick", "-q", help="Quick mode with 3-5 questions"),
-    guided: bool = typer.Option(
-        False, "--guided", "-g", help="Guided mode with comprehensive interview"
-    ),
-    stack: Optional[str] = typer.Option(None, "--stack", "-s", help="Override auto-detected stack"),
-    tools: Optional[str] = typer.Option(
-        None, "--tools", "-t", help="Comma-separated list of target tools"
-    ),
-    project_path: Path = typer.Argument(Path("."), help="Path to project"),
-):
-    """Initialize AI rules for your project."""
-    project_path = project_path.resolve()
+def get_stack_emoji(stack: str) -> str:
+    """Get emoji for detected stack."""
+    stack_emojis = {
+        "nextjs": "⚛️",
+        "react": "⚛️",
+        "vue": "🟢",
+        "python": "🐍",
+        "django": "🐍",
+        "fastapi": "🐍",
+        "nodejs": "🟩",
+        "go": "🐹",
+        "rust": "🦀",
+        "ruby": "💎",
+        "php": "🐘",
+    }
+    return stack_emojis.get(stack.lower(), "📦")
 
+
+@app.callback(invoke_without_command=True)
+def init_command(
+    quick: bool = typer.Option(
+        False, "--quick", "-q", help="Quick mode - skip interactive prompts"
+    ),
+    guided: bool = typer.Option(False, "--guided", "-g", help="Guided mode - interactive setup"),
+    stack: Optional[str] = typer.Option(
+        None, "--stack", "-s", help="Override auto-detection with specific stack"
+    ),
+    path: Path = typer.Option(Path("."), "--path", "-p", help="Path to project directory"),
+):
+    """Initialize AI rules for current project."""
+
+    project_path = path.resolve()
+
+    # Header panel
+    console.print()
     console.print(
         Panel.fit(
-            f"[bold blue]Rulesmith - AI Rule Generator[/bold blue]\nProject: {project_path}",
+            f"[bold blue]🔧 Initializing Rulesmith[/bold blue]\n[dim]{project_path}[/dim]",
             border_style="blue",
+            box=box.ROUNDED,
+            padding=(1, 2),
+        )
+    )
+    console.print()
+
+    # Detect stack with styled progress
+    with Progress(
+        SpinnerColumn(spinner_name="dots", style="cyan"),
+        TextColumn("[bold cyan]{task.description}[/bold cyan]"),
+        console=console,
+        transient=True,
+    ) as progress:
+        task = progress.add_task("🔍 Analyzing project files...", total=None)
+        detector = StackDetector(project_path)
+        result = detector.detect()
+
+    # Results panel
+    stack_emoji = get_stack_emoji(result.primary)
+
+    results_table = Table(show_header=False, box=None, padding=(0, 2))
+    results_table.add_column("Label", style="dim", justify="right")
+    results_table.add_column("Value", style="bold")
+
+    results_table.add_row("Stack:", f"{stack_emoji} {result.primary}")
+    results_table.add_row("Confidence:", f"[green]{result.confidence:.0%}[/green]")
+
+    if result.all_signals:
+        signals_list = list(result.all_signals.keys())[:5]
+        signals_str = ", ".join(signals_list)
+        results_table.add_row("Signals:", f"[dim]{signals_str}[/dim]")
+
+    console.print(
+        Panel(
+            results_table,
+            title="[bold green]✓ Detection Results[/bold green]",
+            border_style="green",
+            box=box.ROUNDED,
         )
     )
 
-    # Detect stack
-    console.print("\n[bold]Detecting technology stack...[/bold]")
-    detector = StackDetector(project_path)
-    result = detector.detect()
+    # Save configuration
+    config_manager = ConfigManager(project_path)
+    config = config_manager.create_config(
+        project_name=project_path.name,
+        detected_stack=result.primary,
+        stack_confidence=result.confidence,
+        detected_signals=result.all_signals,
+        generation_mode="quick" if quick else "guided" if guided else "quick",
+        selected_stack=stack,
+    )
+    config_manager.save(config)
 
-    if result.primary == "unknown":
-        console.print("[yellow]⚠ Could not detect technology stack automatically.[/yellow]")
-        console.print("Using generic rules. Consider specifying with --stack")
-    else:
-        console.print(
-            f"[green]✓ Detected: {result.primary} (confidence: {result.confidence:.0%})[/green]"
+    # Success panel
+    console.print()
+    console.print(
+        Panel.fit(
+            f"[bold green]✅ Configuration Saved[/bold green]\n\n"
+            f"[dim]Location:[/dim] {config_manager.config_path}\n"
+            f"[dim]Mode:[/dim] {config.generation_mode}",
+            border_style="green",
+            box=box.ROUNDED,
+            padding=(1, 2),
         )
+    )
 
-    # Use override if provided
-    final_stack = stack or result.primary
-    mode = "guided" if guided else "quick"
-
-    # Parse tools
-    target_tools = ["cursor", "claude", "copilot"]
-    if tools:
-        target_tools = [t.strip() for t in tools.split(",")]
-
-    console.print(f"\n[bold]Mode:[/bold] {mode}")
-    console.print(f"[bold]Stack:[/bold] {final_stack}")
-    console.print(f"[bold]Target Tools:[/bold] {', '.join(target_tools)}")
-
-    # Import and run generator
-    try:
-        from generator.src.orchestrator import GeneratorOrchestrator
-
-        orchestrator = GeneratorOrchestrator(
-            detected_stack=final_stack,
-            library_path=ConfigManager(project_path).get_library_path(),
-            generation_mode=mode,
-            console=console,
-        )
-
-        result = orchestrator.run()
-
-        # Save configuration
-        config_manager = ConfigManager(project_path)
-        from cli.src.config import ProjectConfig
-
-        config = ProjectConfig(
-            project_name=project_path.name,
-            project_root=project_path,
-            detected_stack=result["primary"],
-            stack_confidence=0.95,
-            detected_signals=result["all_signals"],
-            selected_stack=final_stack if stack else None,
-            generation_mode=mode,
-            active_formatters=target_tools,
-        )
-        config_manager.save(config)
-
-        # Run formatters
-        console.print("\n[bold green]Generating rule files...[/bold green]")
-        from formatters.src.sync import SyncEngine
-
-        sync = SyncEngine(
-            compiled_rules=result["compiled_rules"],
-            project_context={
-                "project_name": project_path.name,
-                "selected_stack": final_stack,
-                "generation_mode": mode,
-            },
-            project_root=project_path,
-            target_tools=target_tools,
-        )
-
-        sync_results = sync.sync_all()
-
-        for tool, tool_result in sync_results.items():
-            if tool_result["success"]:
-                console.print(f"[green]✓ {tool}[/green]")
-                for f in tool_result.get("files_created", []):
-                    console.print(f"  Created: {f}")
-            else:
-                console.print(f"[red]✗ {tool}: {tool_result.get('error', 'Unknown error')}[/red]")
-
-        console.print(
-            Panel.fit(
-                "[bold green]✓ Rules generated successfully![/bold green]\n\n"
-                "Run [cyan]rulesmith status[/cyan] to see project status\n"
-                "Run [cyan]rulesmith update[/cyan] to update rule library",
-                border_style="green",
-            )
-        )
-
-    except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+    # Next steps
+    console.print()
+    console.print("[bold yellow]📋 Next Steps:[/bold yellow]")
+    console.print()
+    console.print("  [bold cyan]1.[/bold cyan] Run [bold]rulesmith update[/bold] to fetch rules")
+    console.print("  [bold cyan]2.[/bold cyan] Review the generated configuration")
+    console.print("  [bold cyan]3.[/bold cyan] Start coding with your AI assistant!")
+    console.print()

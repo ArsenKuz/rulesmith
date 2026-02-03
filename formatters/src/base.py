@@ -1,9 +1,9 @@
-"""Base formatter interface."""
+"""Base formatter interface and utilities."""
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from typing import Dict, List, Optional, Any
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -12,7 +12,7 @@ class FormatterConfig:
 
     enabled: bool = True
     output_path: Optional[Path] = None
-    tool_specific_options: Dict[str, Any] = None
+    tool_specific_options: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

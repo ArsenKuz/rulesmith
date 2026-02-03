@@ -1,73 +1,69 @@
-"""Update command for Rulesmith."""
-
-from pathlib import Path
+"""Update command - Update rule library from GitHub."""
 
 import typer
+import subprocess
+from pathlib import Path
+from datetime import datetime
 from rich.console import Console
-from rich.panel import Panel
 
-from cli.src.config import ConfigManager
+from cli.src.config.manager import ConfigManager
 
-app = typer.Typer(help="Update rule library")
 console = Console()
 
+LIBRARY_REPO = "github.com/user/rulesmith-library"
+LIBRARY_PATH = Path.home() / ".rulesmith" / "library"
 
-@app.callback(invoke_without_command=True)
-def update(
-    project_path: Path = typer.Argument(Path("."), help="Path to project"),
-):
-    """Update rule library from GitHub."""
-    project_path = project_path.resolve()
 
-    console.print(
-        Panel.fit(
-            "[bold blue]Rulesmith - Update Library[/bold blue]",
-            border_style="blue",
-        )
-    )
-
-    # Check if project is initialized
-    config_manager = ConfigManager(project_path)
-    if not config_manager.exists():
-        console.print("[red]Error: Project not initialized. Run 'rulesmith init' first.[/red]")
-        raise typer.Exit(1)
-
-    # Get library path
-    library_path = config_manager.get_library_path()
-
-    console.print(f"\nLibrary path: {library_path}")
-
-    # Update library (git pull or clone)
-    import subprocess
+def update_command():
+    """Update rule library from GitHub repository."""
+    console.print("[bold blue]📦 Updating rule library...[/bold blue]")
 
     try:
-        if library_path.exists():
-            console.print("[bold]Pulling latest changes...[/bold]")
+        # Clone or pull latest library
+        if LIBRARY_PATH.exists():
+            # Git pull
             result = subprocess.run(
-                ["git", "-C", str(library_path), "pull", "origin", "main"],
+                ["git", "-C", str(LIBRARY_PATH), "pull", "origin", "main"],
                 capture_output=True,
                 text=True,
+                check=True,
             )
-            if result.returncode == 0:
-                console.print("[green]✓ Library updated successfully[/green]")
-            else:
-                console.print(f"[yellow]Warning: {result.stderr}[/yellow]")
+            console.print(f"[dim]{result.stdout}[/dim]")
         else:
-            console.print("[bold]Cloning library...[/bold]")
-            # In real implementation, this would clone from GitHub
-            console.print("[yellow]Library not found. Please clone manually:[/yellow]")
-            console.print(
-                f"  git clone https://github.com/user/rulesmith-library.git {library_path}"
+            # Fresh clone
+            LIBRARY_PATH.parent.mkdir(parents=True, exist_ok=True)
+            result = subprocess.run(
+                ["git", "clone", f"https://{LIBRARY_REPO}.git", str(LIBRARY_PATH)],
+                capture_output=True,
+                text=True,
+                check=True,
             )
+            console.print(f"[dim]{result.stdout}[/dim]")
 
-        # Update config with new timestamp
+        # Update local config with new version if in a project
+        config_manager = ConfigManager(Path("."))
         config = config_manager.load()
         if config:
-            from datetime import datetime
-
+            config.library_version = get_library_version()
             config.library_updated_at = datetime.now()
             config_manager.save(config)
 
-    except Exception as e:
-        console.print(f"[red]Error updating library: {e}[/red]")
+        console.print("[bold green]✅ Library updated successfully![/bold green]")
+
+    except subprocess.CalledProcessError as e:
+        console.print(f"[bold red]❌ Error updating library:[/bold red] {e.stderr}")
         raise typer.Exit(1)
+
+
+def get_library_version() -> str:
+    """Get current library version from git."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(LIBRARY_PATH), "describe", "--tags", "--always"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return result.stdout.strip()
+    except subprocess.CalledProcessError:
+        return "unknown"

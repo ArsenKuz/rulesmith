@@ -1,120 +1,147 @@
-"""Main entry point for Rulesmith CLI."""
-
-from pathlib import Path
-from typing import Optional
+"""Rulesmith CLI - AI rule generator for coding assistants."""
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
-from rich.table import Table
+from rich.text import Text
+from rich import box
+from rich.columns import Columns
+from rich.align import Align
+from cli.src.commands import init, update, status, prd, apikey, new
 
-from cli.src.config import ConfigManager
-from cli.src.detectors.stack_detector import StackDetector
-
-app = typer.Typer(name="rulesmith", help="AI rule generator for coding assistants")
 console = Console()
 
+# Bold 3D ASCII art with strong visual volume
+HERO_TITLE = r"""
+[bold bright_cyan]██████╗  ██╗   ██╗██╗     ███████╗███████╗███╗   ███╗██╗████████╗██╗  ██╗[/bold bright_cyan]
+[bold bright_cyan]██╔══██╗ ██║   ██║██║     ██╔════╝██╔════╝████╗ ████║██║╚══██╔══╝██║  ██║[/bold bright_cyan]
+[bold cyan]██████╔╝ ██║   ██║██║     █████╗  ███████╗██╔████╔██║██║   ██║   ███████║[/bold cyan]
+[bold cyan]██╔══██╗ ██║   ██║██║     ██╔══╝  ╚════██║██║╚██╔╝██║██║   ██║   ██╔══██║[/bold cyan]
+[bold blue]██║  ██║ ╚██████╔╝███████╗███████╗███████║██║ ╚═╝ ██║██║   ██║   ██║  ██║[/bold blue]
+[bold blue]╚═╝  ╚═╝  ╚═════╝ ╚══════╝╚══════╝╚══════╝╚═╝     ╚═╝╚═╝   ╚═╝   ╚═╝  ╚═╝[/bold blue]
+"""
 
-@app.command()
-def init(
-    project_path: Optional[Path] = typer.Argument(None, help="Path to project directory"),
-    quick: bool = typer.Option(False, "--quick", help="Quick mode - skip guided questions"),
-    guided: bool = typer.Option(False, "--guided", help="Guided mode - interactive setup"),
-    stack: Optional[str] = typer.Option(None, "--stack", help="Override detected stack"),
-    tools: Optional[str] = typer.Option(
-        None, "--tools", help="Comma-separated list of tools (cursor,claude,copilot)"
-    ),
+VERSION = "2.0.0"
+
+
+def show_hero_banner():
+    """Display the Rulesmith hero banner."""
+    # Create the banner with border
+    console.print()
+    console.print(
+        "[bold blue]╔══════════════════════════════════════════════════════════════════════════╗[/bold blue]"
+    )
+    console.print(
+        "[bold blue]║                                                                          ║[/bold blue]"
+    )
+
+    # Print the title lines with proper spacing
+    for line in HERO_TITLE.strip().split("\n"):
+        if line.strip():  # Skip empty lines
+            console.print(f"[bold blue]║[/bold blue] {line:<72} [bold blue]║[/bold blue]")
+
+    console.print(
+        "[bold blue]║                                                                          ║[/bold blue]"
+    )
+    console.print(
+        "[bold blue]╚══════════════════════════════════════════════════════════════════════════╝[/bold blue]"
+    )
+
+    # Tagline panel
+    console.print()
+    console.print(
+        Panel.fit(
+            "[bold white]🤖 AI-Powered Project Setup Agent[/bold white]\n"
+            "[dim]Generate PRDs, rules, and project structure for Cursor, Claude, Copilot & more[/dim]",
+            border_style="bright_cyan",
+            box=box.ROUNDED,
+            padding=(1, 2),
+        )
+    )
+    console.print()
+
+
+def show_quick_start():
+    """Show quick start guide with better formatting."""
+    console.print("[bold yellow]🚀 Quick Start[/bold yellow]")
+    console.print("[dim]─────────────[/dim]\n")
+
+    commands = [
+        (
+            "[bold green]new[/bold green]",
+            "Create a new project with AI-generated PRD",
+            "[blue]➜[/blue]",
+        ),
+        (
+            "[bold green]init[/bold green]",
+            "Initialize AI rules for existing project",
+            "[blue]➜[/blue]",
+        ),
+        (
+            "[bold green]prd[/bold green]",
+            "Generate Product Requirements Document",
+            "[blue]➜[/blue]",
+        ),
+        (
+            "[bold green]apikey set[/bold green]",
+            "Configure API keys for LLM providers",
+            "[blue]➜[/blue]",
+        ),
+        (
+            "[bold green]status[/bold green]",
+            "Check current project configuration",
+            "[blue]➜[/blue]",
+        ),
+    ]
+
+    for cmd, desc, arrow in commands:
+        console.print(f"  {arrow} [bold]rulesmith {cmd}[/bold]")
+        console.print(f"    [dim]{desc}[/dim]\n")
+
+    # Tip box
+    console.print(
+        Panel(
+            "[dim]💡 Run[/dim] [bold cyan]rulesmith --help[/bold cyan] [dim]for all available options[/dim]",
+            border_style="dim",
+            box=box.ROUNDED,
+            padding=(0, 2),
+        )
+    )
+    console.print()
+
+
+# Create the main app with custom no-args callback
+app = typer.Typer(
+    name="rulesmith",
+    help="AI rule generator for coding assistants",
+    rich_markup_mode="rich",
+    no_args_is_help=False,  # We'll handle this ourselves
+)
+
+# Add all commands
+app.add_typer(init.app, name="init", help="Initialize AI rules for current project")
+app.add_typer(new.app, name="new", help="Create a new project with AI-generated PRD and rules")
+app.add_typer(prd.app, name="prd", help="Generate Product Requirements Document")
+app.add_typer(apikey.app, name="apikey", help="Manage API keys for LLM providers")
+app.command(name="update")(update.update_command)
+app.command(name="status")(status.status_command)
+
+
+@app.callback(invoke_without_command=True)
+def main_callback(
+    ctx: typer.Context,
+    version: bool = typer.Option(False, "--version", "-v", help="Show version"),
 ):
-    """Initialize a new Rulesmith project."""
-    path = Path(project_path) if project_path else Path.cwd()
+    """Main callback - shows hero banner when no command given."""
+    if version:
+        console.print(f"[bold cyan]Rulesmith[/bold cyan] version [bold]{VERSION}[/bold]")
+        raise typer.Exit()
 
-    console.print(Panel.fit(f"[bold blue]Initializing Rulesmith in {path}[/bold blue]"))
-
-    # Detect stack
-    detector = StackDetector(path)
-    result = detector.detect()
-
-    console.print(f"\n[bold]Detected Stack:[/bold] {result.primary}")
-    console.print(f"[bold]Confidence:[/bold] {result.confidence:.0%}")
-
-    if result.scores:
-        console.print("\n[dim]All matches:[/dim]")
-        for stack_id, score in sorted(result.scores.items(), key=lambda x: x[1], reverse=True):
-            console.print(f"  {stack_id}: {score}")
-
-    # Mode selection
-    mode = "guided" if guided else "quick"
-    if quick and guided:
-        console.print("[yellow]Warning: both --quick and --guided set, using guided[/yellow]")
-        mode = "guided"
-
-    console.print(f"\n[bold]Mode:[/bold] {mode}")
-
-    # Tools
-    active_tools = tools.split(",") if tools else ["cursor", "claude", "copilot"]
-    console.print(f"[bold]Tools:[/bold] {', '.join(active_tools)}")
-
-    # TODO: Run generator
-    console.print("\n[dim]Would run generator...[/dim]")
-    console.print("[green]✓[/green] Done!")
-
-
-@app.command()
-def update(
-    project_path: Optional[Path] = typer.Argument(None, help="Path to project directory"),
-):
-    """Update rules for an existing project."""
-    path = Path(project_path) if project_path else Path.cwd()
-
-    console.print(Panel.fit(f"[bold blue]Updating Rulesmith project in {path}[/bold blue]"))
-
-    config_manager = ConfigManager(path)
-
-    if not config_manager.exists():
-        console.print("[red]✗ No Rulesmith configuration found. Run 'rulesmith init' first.[/red]")
-        raise typer.Exit(1)
-
-    config = config_manager.load()
-    console.print(f"[green]✓[/green] Found configuration for: {config.project_name}")
-    console.print(f"[green]✓[/green] Stack: {config.detected_stack}")
-    console.print(f"[green]✓[/green] Tools: {', '.join(config.active_formatters)}")
-
-    # TODO: Run generator
-    console.print("\n[dim]Would run generator...[/dim]")
-    console.print("[green]✓[/green] Done!")
-
-
-@app.command()
-def status(
-    project_path: Optional[Path] = typer.Argument(None, help="Path to project directory"),
-):
-    """Show status of the current project."""
-    path = Path(project_path) if project_path else Path.cwd()
-
-    console.print(Panel.fit(f"[bold blue]Rulesmith Status: {path}[/bold blue]"))
-
-    config_manager = ConfigManager(path)
-
-    if not config_manager.exists():
-        console.print("[yellow]⚠ No Rulesmith configuration found[/yellow]")
-        console.print("Run [bold]rulesmith init[/bold] to set up this project")
-        return
-
-    config = config_manager.load()
-
-    table = Table(show_header=False, box=None)
-    table.add_column("Field", style="bold cyan")
-    table.add_column("Value")
-
-    table.add_row("Project", config.project_name)
-    table.add_row("Stack", f"{config.detected_stack} ({config.stack_confidence:.0%} confidence)")
-    table.add_row("Mode", config.generation_mode)
-    table.add_row("Tools", ", ".join(config.active_formatters))
-    table.add_row("Version", config.version)
-    table.add_row("Created", str(config.created_at))
-    table.add_row("Updated", str(config.updated_at))
-
-    console.print(table)
+    # If no command provided, show hero banner and help
+    if ctx.invoked_subcommand is None:
+        show_hero_banner()
+        show_quick_start()
+        console.print(ctx.get_help())
 
 
 if __name__ == "__main__":

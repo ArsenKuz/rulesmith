@@ -2,7 +2,8 @@
 
 import json
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
+from datetime import datetime
 
 from .schema import ProjectConfig
 
@@ -14,7 +15,7 @@ class ConfigManager:
     CONFIG_FILE = "config.json"
 
     def __init__(self, project_path: Path):
-        self.project_path = Path(project_path)
+        self.project_path = Path(project_path).resolve()
         self.config_path = self.project_path / self.CONFIG_DIR / self.CONFIG_FILE
 
     def load(self) -> Optional[ProjectConfig]:
@@ -25,9 +26,14 @@ class ConfigManager:
         with open(self.config_path) as f:
             data = json.load(f)
 
-        # Convert path strings back to Path objects
+        # Convert string paths back to Path objects
         if "project_root" in data and isinstance(data["project_root"], str):
             data["project_root"] = Path(data["project_root"])
+
+        # Parse datetime strings
+        for field in ["created_at", "updated_at", "library_updated_at"]:
+            if field in data and isinstance(data[field], str):
+                data[field] = datetime.fromisoformat(data[field])
 
         return ProjectConfig(**data)
 
@@ -36,35 +42,35 @@ class ConfigManager:
         config_dir = self.project_path / self.CONFIG_DIR
         config_dir.mkdir(exist_ok=True)
 
-        # Update timestamp
-        from datetime import datetime
-
         config.updated_at = datetime.now()
 
         with open(self.config_path, "w") as f:
-            json.dump(
-                config.model_dump(mode="json"),
-                f,
-                indent=2,
-                default=str,
-            )
+            json.dump(config.model_dump(), f, indent=2, default=self._json_serializer)
 
-    def exists(self) -> bool:
-        """Check if config exists."""
-        return self.config_path.exists()
+    def create_config(
+        self,
+        project_name: str,
+        detected_stack: str,
+        stack_confidence: float,
+        detected_signals: Dict[str, Any],
+        generation_mode: str = "quick",
+        selected_stack: Optional[str] = None,
+    ) -> ProjectConfig:
+        """Create a new project configuration."""
+        return ProjectConfig(
+            project_name=project_name,
+            project_root=self.project_path,
+            detected_stack=detected_stack,
+            stack_confidence=stack_confidence,
+            detected_signals=detected_signals,
+            generation_mode=generation_mode,
+            selected_stack=selected_stack,
+        )
 
-    def delete(self) -> None:
-        """Delete configuration."""
-        if self.config_path.exists():
-            self.config_path.unlink()
-
-    def get_library_path(self) -> Path:
-        """Get the library path (from environment or default)."""
-        import os
-
-        env_path = os.environ.get("RULESMITH_LIBRARY_PATH")
-        if env_path:
-            return Path(env_path)
-
-        # Default to parent directory rules
-        return self.project_path.parent / "rulesmith-library"
+    def _json_serializer(self, obj):
+        """Custom JSON serializer for special types."""
+        if isinstance(obj, Path):
+            return str(obj)
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        raise TypeError(f"Object of type {type(obj)} is not JSON serializable")

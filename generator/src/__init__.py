@@ -1,5 +1,3 @@
-"""Generator module."""
+"""Generator package for AI Rulesmith."""
 
-from .orchestrator import GeneratorOrchestrator
-
-__all__ = ["GeneratorOrchestrator"]
+__version__ = "0.1.0"

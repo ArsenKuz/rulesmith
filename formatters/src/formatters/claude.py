@@ -1,22 +1,23 @@
-"""Claude formatter for CLAUDE.md single file output."""
+"""Claude Code formatter - generates CLAUDE.md file."""
 
 from pathlib import Path
 from typing import Any, Dict, List
 
-from formatters.src.base import BaseFormatter, FormatterConfig, FormatterResult
+# Handle both relative and absolute imports
+try:
+    from ..base import BaseFormatter, FormatterConfig, FormatterResult
+except ImportError:
+    from base import BaseFormatter, FormatterConfig, FormatterResult
 
 
 class ClaudeFormatter(BaseFormatter):
-    """Formatter for Claude AI CLAUDE.md single file."""
+    """Formatter for Claude Code (CLAUDE.md file)."""
 
-    name = "Claude"
+    name = "Claude Code"
     tool_id = "claude"
-    description = "Formats rules for Claude AI CLAUDE.md file"
+    description = "Generates CLAUDE.md file for Claude Code"
     file_extension = ".md"
     supports_multiple_files = False
-
-    def __init__(self, config: FormatterConfig):
-        super().__init__(config)
 
     def format_rules(
         self,
@@ -24,133 +25,165 @@ class ClaudeFormatter(BaseFormatter):
         project_context: Dict[str, Any],
         output_dir: Path,
     ) -> FormatterResult:
-        """Format compiled rules into a single CLAUDE.md file."""
-        files_created = []
-        files_updated = []
-        errors = []
+        """
+        Format rules as CLAUDE.md file.
+
+        Creates:
+        - CLAUDE.md (single comprehensive file)
+        """
+        output_path = self.get_output_path(output_dir / "CLAUDE.md")
+
+        files_created: List[Path] = []
+        files_updated: List[Path] = []
+        errors: List[str] = []
 
         try:
-            output_path = self.get_output_path(output_dir)
-            self.prepare_output_dir(output_path.parent)
-
             content = self._generate_content(compiled_rules, project_context)
 
-            claude_file = output_path / "CLAUDE.md"
-
-            if claude_file.exists():
-                files_updated.append(claude_file)
+            if output_path.exists():
+                files_updated.append(output_path)
             else:
-                files_created.append(claude_file)
+                files_created.append(output_path)
 
-            claude_file.write_text(content, encoding="utf-8")
+            output_path.write_text(content)
+
+            return FormatterResult(
+                success=True,
+                files_created=files_created,
+                files_updated=files_updated,
+                errors=errors,
+            )
 
         except Exception as e:
-            errors.append(f"Failed to generate CLAUDE.md: {str(e)}")
-
-        success = len(errors) == 0
-        return FormatterResult(
-            success=success,
-            files_created=files_created,
-            files_updated=files_updated,
-            errors=errors,
-        )
+            return FormatterResult(
+                success=False,
+                files_created=files_created,
+                files_updated=files_updated,
+                errors=[str(e)],
+            )
 
     def _generate_content(
-        self, compiled_rules: List[Dict[str, Any]], project_context: Dict[str, Any]
+        self,
+        rules: List[Dict[str, Any]],
+        context: Dict[str, Any],
     ) -> str:
-        """Generate CLAUDE.md content with required sections."""
-        sections = []
+        """Generate CLAUDE.md content."""
 
-        project_name = project_context.get("name", "Project")
-        sections.append(f"# {project_name}\n")
+        # Sort rules: core first, then by weight
+        sorted_rules = sorted(
+            rules,
+            key=lambda x: (
+                0 if x.get("category") == "core" else 1,
+                -x.get("weight", 50),
+            ),
+        )
 
-        sections.append("## Project Overview\n")
-        overview = project_context.get("description", "AI coding assistant rules and guidelines.")
-        sections.append(f"{overview}\n")
+        content = f"""# {context.get("project_name", "Project")} - AI Assistant Rules
 
-        tech_stack = project_context.get("tech_stack", {})
-        if tech_stack:
-            sections.append("**Technology Stack:**")
-            for category, tools in tech_stack.items():
-                if isinstance(tools, list):
-                    sections.append(f"- {category}: {', '.join(tools)}")
-                else:
-                    sections.append(f"- {category}: {tools}")
-            sections.append("")
+## Project Overview
 
-        sections.append("## Core Principles\n")
+- **Technology Stack:** {context.get("selected_stack", "Not specified")}
+- **Generated:** {context.get("timestamp", "Unknown")}
+- **Mode:** {context.get("generation_mode", "quick")}
 
-        core_rules = [r for r in compiled_rules if r.get("priority") == "core"]
-        high_rules = [r for r in compiled_rules if r.get("priority") == "high"]
-        medium_rules = [r for r in compiled_rules if r.get("priority") == "medium"]
-        low_rules = [r for r in compiled_rules if r.get("priority") == "low"]
+### About This Project
 
-        priority_order = core_rules + high_rules + medium_rules + low_rules
+{context.get("project_description", "No description provided.")}
 
-        if priority_order:
-            for rule in priority_order:
-                name = rule.get("name", "Unnamed Rule")
-                description = rule.get("description", "")
-                content = rule.get("content", rule.get("body", ""))
+## Core Principles (Always Apply)
 
-                sections.append(f"### {name}\n")
-                if description:
-                    sections.append(f"{description}\n")
-                if content:
-                    sections.append(f"{content}\n")
-        else:
-            sections.append("No core principles defined.\n")
+"""
 
-        sections.append("## Stack Guidelines\n")
+        # Add always-apply rules first
+        core_rules = [r for r in sorted_rules if r.get("alwaysApply")]
+        for rule in core_rules:
+            content += self._format_rule_section(rule)
 
-        if tech_stack:
-            for category, tools in tech_stack.items():
-                sections.append(f"### {category.capitalize()}\n")
+        content += "\n## Stack-Specific Guidelines\n\n"
 
-                related_rules = [
-                    r
-                    for r in compiled_rules
-                    if category.lower() in r.get("category", "").lower()
-                    or category.lower() in r.get("name", "").lower()
-                ]
+        # Add stack-specific rules
+        stack_rules = [r for r in sorted_rules if r.get("category") == "stack"]
+        for rule in stack_rules:
+            content += self._format_rule_section(rule)
 
-                if related_rules:
-                    for rule in related_rules[:3]:
-                        name = rule.get("name", "")
-                        content = rule.get("content", rule.get("body", ""))
-                        if name and content:
-                            sections.append(f"**{name}**")
-                            sections.append(f"{content}\n")
-                else:
-                    if isinstance(tools, list):
-                        sections.append(f"Primary tools: {', '.join(tools)}\n")
-                    else:
-                        sections.append(f"Primary tool: {tools}\n")
-        else:
-            sections.append("No stack guidelines defined.\n")
+        content += "\n## Domain-Specific Patterns\n\n"
 
-        return "\n".join(sections)
+        # Add domain rules
+        domain_rules = [r for r in sorted_rules if r.get("category") == "domain"]
+        for rule in domain_rules:
+            content += self._format_rule_section(rule)
+
+        content += f"""
+## Communication Preferences
+
+Based on this project's configuration:
+
+- **Team Size:** {context.get("team_size", "Unknown")}
+- **Primary Constraint:** {context.get("priority_constraint", "Not specified")}
+- **Documentation Level:** {context.get("documentation_level", "Not specified")}
+
+### When to Ask vs Act
+
+Ask when:
+- Requirements are ambiguous
+- Multiple valid architectural approaches exist
+- Security implications are unclear
+
+Act when:
+- Following established patterns in the codebase
+- Clear technical path forward
+- Routine implementation tasks
+
+## Additional Context
+
+"""
+
+        if context.get("additional_notes"):
+            content += f"### Special Requirements\n\n{context['additional_notes']}\n\n"
+
+        content += """### Resources
+
+- Refer to individual source files for specific implementation patterns
+- When uncertain, prefer explicit type annotations and error handling
+- Security and data validation are always top priorities
+
+---
+
+*This file was generated by Rulesmith. Update it by running `rulesmith init` again.*
+"""
+
+        return content
+
+    def _format_rule_section(self, rule: Dict[str, Any]) -> str:
+        """Format a single rule as a section."""
+        section = f"### {rule.get('id', 'Rule')}\n\n"
+        section += f"**Applies to:** `{rule.get('globs', '*')}`\n\n"
+
+        if rule.get("description"):
+            section += f"{rule['description']}\n\n"
+
+        # Add the rule content
+        section += rule.get("content", "")
+        section += "\n\n"
+
+        return section
 
     def validate_output(self, output_path: Path) -> bool:
-        """Validate that CLAUDE.md has required sections."""
+        """Validate CLAUDE.md exists and has required sections."""
         if not output_path.exists():
             return False
 
-        required_sections = {
-            "project overview",
-            "core principles",
-            "stack guidelines",
-        }
+        content = output_path.read_text()
 
-        try:
-            content = output_path.read_text(encoding="utf-8").lower()
+        # Must have key sections
+        required_sections = [
+            "Project Overview",
+            "Core Principles",
+            "Stack-Specific Guidelines",
+        ]
 
-            found_sections = set()
-            for section in required_sections:
-                if f"## {section}" in content or f"# {section}" in content:
-                    found_sections.add(section)
+        for section in required_sections:
+            if section not in content:
+                return False
 
-            return found_sections == required_sections
-
-        except Exception:
-            return False
+        return True

@@ -1,0 +1,177 @@
+"""Roo Code formatter - generates .roo/rules/ directory."""
+
+import re
+from pathlib import Path
+from typing import Any, Dict, List
+import yaml
+
+# Handle both relative and absolute imports
+try:
+    from ..base import BaseFormatter, FormatterConfig, FormatterResult
+except ImportError:
+    from base import BaseFormatter, FormatterConfig, FormatterResult
+
+
+class RooFormatter(BaseFormatter):
+    """Formatter for Roo Code (.roo/rules/)."""
+
+    name = "Roo Code"
+    tool_id = "roo"
+    description = "Generates .roo/rules/ directory"
+    file_extension = ".md"
+    supports_multiple_files = True
+
+    def format_rules(
+        self,
+        compiled_rules: List[Dict[str, Any]],
+        project_context: Dict[str, Any],
+        output_dir: Path,
+    ) -> FormatterResult:
+        """Generate .roo/rules/ files."""
+        output_path = self.get_output_path(output_dir / ".roo" / "rules")
+        self.prepare_output_dir(output_path)
+
+        files_created: List[Path] = []
+        files_updated: List[Path] = []
+        errors: List[str] = []
+
+        try:
+            # Sort rules by weight (highest first)
+            sorted_rules = sorted(
+                compiled_rules,
+                key=lambda x: x.get("weight", 50),
+                reverse=True,
+            )
+
+            # Generate individual .md files for each rule
+            for i, rule in enumerate(sorted_rules):
+                filename = self._generate_filename(rule, i)
+                file_path = output_path / filename
+
+                content = self._format_single_rule(rule)
+
+                if file_path.exists():
+                    files_updated.append(file_path)
+                else:
+                    files_created.append(file_path)
+
+                file_path.write_text(content)
+
+            # Generate project summary file
+            summary_path = output_path / "_project-summary.md"
+            summary_content = self._generate_project_summary(
+                compiled_rules, project_context
+            )
+            summary_path.write_text(summary_content)
+
+            if summary_path.exists():
+                files_updated.append(summary_path)
+            else:
+                files_created.append(summary_path)
+
+            return FormatterResult(
+                success=True,
+                files_created=files_created,
+                files_updated=files_updated,
+                errors=errors,
+            )
+
+        except Exception as e:
+            return FormatterResult(
+                success=False,
+                files_created=files_created,
+                files_updated=files_updated,
+                errors=[str(e)],
+            )
+
+    def _generate_filename(self, rule: Dict[str, Any], index: int) -> str:
+        """Generate .md filename with sorting prefix."""
+        rule_id = rule.get("id", f"rule-{index}")
+
+        # Determine prefix based on rule category/weight
+        if rule.get("category") == "core" or rule.get("alwaysApply"):
+            prefix = f"00-core-{index:02d}"
+        else:
+            prefix = f"{index + 1:02d}"
+
+        return f"{prefix}-{rule_id}.md"
+
+    def _format_single_rule(self, rule: Dict[str, Any]) -> str:
+        """Format a single rule as .md content."""
+        frontmatter = {
+            "description": rule.get("description", ""),
+            "globs": rule.get("globs", "**/*"),
+            "alwaysApply": rule.get("alwaysApply", False),
+        }
+
+        # Build YAML frontmatter
+        yaml_content = yaml.dump(
+            frontmatter,
+            default_flow_style=False,
+            sort_keys=False,
+        )
+
+        # Combine frontmatter + body
+        content = f"---\n{yaml_content}---\n\n"
+        content += rule.get("content", "")
+
+        return content
+
+    def _generate_project_summary(
+        self,
+        rules: List[Dict[str, Any]],
+        context: Dict[str, Any],
+    ) -> str:
+        """Generate project summary file."""
+        body = f"""# Project Context
+
+**Project:** {context.get("project_name", "Unnamed Project")}
+**Stack:** {context.get("selected_stack", "Unknown")}
+**Generated:** {context.get("timestamp", "Unknown")}
+
+## Active Rules
+
+This project uses {len(rules)} AI assistant rules:
+
+"""
+
+        for rule in rules:
+            body += (
+                f"- **{rule.get('id')}**: {rule.get('description', 'No description')}\n"
+            )
+
+        body += """
+## Quick Reference
+
+- Always follow the patterns defined in individual rule files
+- When in doubt, prefer explicit over implicit
+- Security and error handling are non-negotiable
+"""
+
+        return body
+
+    def validate_output(self, output_path: Path) -> bool:
+        """Validate .md files are correctly formatted."""
+        if not output_path.exists():
+            return False
+
+        for md_file in output_path.glob("*.md"):
+            content = md_file.read_text()
+
+            # Must have YAML frontmatter
+            if not content.startswith("---"):
+                continue
+
+            # Must have required frontmatter fields
+            try:
+                match = re.match(r"^---\n(.*?)\n---\n", content, re.DOTALL)
+                if not match:
+                    return False
+
+                frontmatter = yaml.safe_load(match.group(1))
+                if "description" not in frontmatter:
+                    return False
+            except Exception:
+                return False
+
+        return True
