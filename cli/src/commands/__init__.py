@@ -9,6 +9,7 @@ from .new import new_command
 from .prd import app as prd_app
 from .prd import prd_command
 from .apikey import app as apikey_app
+from .skill import app as skill_app
 from .shell import start_shell, RulesmithREPL
 
 __all__ = [
@@ -21,6 +22,7 @@ __all__ = [
     "prd_app",
     "prd_command",
     "apikey_app",
+    "skill_app",
     "start_shell",
     "RulesmithREPL",
 ]

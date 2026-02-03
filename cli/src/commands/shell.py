@@ -37,6 +37,7 @@ class RulesmithREPL:
             "new": self._cmd_new,
             "prd": self._cmd_prd,
             "apikey": self._cmd_apikey,
+            "skill": self._cmd_skill,
             "update": self._cmd_update,
             "status": self._cmd_status,
             "help": self._cmd_help,
@@ -253,6 +254,59 @@ class RulesmithREPL:
         # Call the status function
         status_command()
 
+    def _cmd_skill(self, args: List[str]) -> None:
+        """Handle skill command."""
+        import subprocess
+        import sys
+
+        if not args:
+            # Show skill help
+            console.print("[bold]Skill Commands:[/bold]")
+            console.print("  skill list              - List available skills")
+            console.print("  skill info <name>       - Show skill details")
+            console.print("  skill use <name>        - Load and use a skill")
+            console.print("  skill unload <name>     - Unload a skill")
+            console.print("  skill active            - Show active skills")
+            console.print("  skill search <query>    - Search skills")
+            return
+
+        # Get the subcommand and remaining args
+        subcommand = args[0]
+        subcommand_args = args[1:]
+
+        try:
+            # Import the skill module and dispatch
+            from cli.src.commands import skill
+
+            if subcommand == "list":
+                skill.list_skills(
+                    category=subcommand_args[1]
+                    if len(subcommand_args) > 1 and subcommand_args[0] in ["--category", "-c"]
+                    else None,
+                    tag=subcommand_args[1]
+                    if len(subcommand_args) > 1 and subcommand_args[0] in ["--tag", "-t"]
+                    else None,
+                )
+            elif subcommand == "info" and subcommand_args:
+                skill.skill_info(name=subcommand_args[0])
+            elif subcommand == "use" and subcommand_args:
+                skill.use_skill(name=subcommand_args[0])
+            elif subcommand == "unload" and subcommand_args:
+                skill.unload_skill(name=subcommand_args[0])
+            elif subcommand == "active":
+                skill.list_active()
+            elif subcommand == "search" and subcommand_args:
+                skill.search_skills(query=subcommand_args[0])
+            elif subcommand == "categories":
+                skill.list_categories()
+            elif subcommand == "reload":
+                skill.reload_skills()
+            else:
+                console.print(f"[red]Unknown skill subcommand: {subcommand}[/red]")
+                console.print("[dim]Use 'skill' without arguments to see available commands[/dim]")
+        except Exception as e:
+            console.print(f"[red]Error executing skill command: {e}[/red]")
+
     def _cmd_help(self, args: List[str]) -> None:
         """Show help message."""
         help_text = """
@@ -273,6 +327,10 @@ class RulesmithREPL:
 [green]apikey[/green] [dim]<action> [provider][/dim]
   Manage API keys for LLM providers
   Actions: list, set, remove, show, test
+
+[green]skill[/green] [dim]<subcommand> [args][/dim]
+  Manage and execute skills
+  Subcommands: list, info, use, unload, active, search
 
 [green]update[/green]
   Update rule library from remote repository
