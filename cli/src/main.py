@@ -7,7 +7,7 @@ from rich.text import Text
 from rich import box
 from rich.columns import Columns
 from rich.align import Align
-from cli.src.commands import init, update, status, prd, apikey, new, skill
+from cli.src.commands import init, update, status, prd, apikey, new, skill, library
 from cli.src.commands.shell import start_shell
 
 console = Console()
@@ -125,6 +125,7 @@ app.add_typer(new.app, name="new", help="Create a new project with AI-generated 
 app.add_typer(prd.app, name="prd", help="Generate Product Requirements Document")
 app.add_typer(apikey.app, name="apikey", help="Manage API keys for LLM providers")
 app.add_typer(skill.app, name="skill", help="Manage and execute skills")
+app.add_typer(library.app, name="library", help="Manage rules and skills libraries")
 app.command(name="update")(update.update_command)
 app.command(name="status")(status.status_command)
 

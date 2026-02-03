@@ -15,6 +15,7 @@ from rich.text import Text
 from rich import box
 
 # Import commands
+import typer
 from cli.src.commands import (
     init_command,
     update_command,
@@ -38,6 +39,7 @@ class RulesmithREPL:
             "prd": self._cmd_prd,
             "apikey": self._cmd_apikey,
             "skill": self._cmd_skill,
+            "library": self._cmd_library,
             "update": self._cmd_update,
             "status": self._cmd_status,
             "help": self._cmd_help,
@@ -307,6 +309,59 @@ class RulesmithREPL:
         except Exception as e:
             console.print(f"[red]Error executing skill command: {e}[/red]")
 
+    def _cmd_library(self, args: List[str]) -> None:
+        """Handle library command."""
+        try:
+            from cli.src.commands import library
+
+            if not args:
+                library.library_callback(typer.Context(library.app))
+                return
+
+            subcommand = args[0]
+            subcommand_args = args[1:]
+
+            if subcommand == "update":
+                rules = "--no-rules" not in subcommand_args
+                skills = "--no-skills" not in subcommand_args
+                library.update_libraries(rules=rules, skills=skills)
+            elif subcommand == "list":
+                library.list_sources()
+            elif subcommand == "status":
+                library.library_status()
+            elif subcommand == "add" and len(subcommand_args) >= 2:
+                name = subcommand_args[0]
+                url = subcommand_args[1]
+                lib_type = "rules"
+                branch = "main"
+                # Parse options
+                i = 2
+                while i < len(subcommand_args):
+                    if subcommand_args[i] in ["--type", "-t"] and i + 1 < len(subcommand_args):
+                        lib_type = subcommand_args[i + 1]
+                        i += 2
+                    elif subcommand_args[i] in ["--branch", "-b"] and i + 1 < len(subcommand_args):
+                        branch = subcommand_args[i + 1]
+                        i += 2
+                    else:
+                        i += 1
+                library.add_source(name=name, url=url, type=lib_type, branch=branch)
+            elif subcommand == "remove" and subcommand_args:
+                name = subcommand_args[0]
+                lib_type = None
+                if "--type" in subcommand_args:
+                    idx = subcommand_args.index("--type")
+                    if idx + 1 < len(subcommand_args):
+                        lib_type = subcommand_args[idx + 1]
+                library.remove_source(name=name, type=lib_type)
+            else:
+                console.print(f"[red]Unknown library subcommand: {subcommand}[/red]")
+                console.print(
+                    "[dim]Use 'library' without arguments to see available commands[/dim]"
+                )
+        except Exception as e:
+            console.print(f"[red]Error executing library command: {e}[/red]")
+
     def _cmd_help(self, args: List[str]) -> None:
         """Show help message."""
         help_text = """
@@ -331,6 +386,10 @@ class RulesmithREPL:
 [green]skill[/green] [dim]<subcommand> [args][/dim]
   Manage and execute skills
   Subcommands: list, info, use, unload, active, search
+
+[green]library[/green] [dim]<subcommand> [args][/dim]
+  Manage rules and skills libraries
+  Subcommands: update, list, add, remove, status
 
 [green]update[/green]
   Update rule library from remote repository
